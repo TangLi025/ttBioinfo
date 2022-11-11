@@ -1,0 +1,34 @@
+SAMPLE=["M3IN_0h","M3IN_4h","M3IN_12h"]
+
+TREATMENT=["input","ip"]
+REP=["rep1","rep2"]
+
+STRAND=["pos","neg"]
+
+THREADS = 10
+
+rule all:
+  input:
+    expand("04_deeptools/03_bw_compare/{sample}_{rep}.bw",sample=SAMPLE,rep=REP)
+
+rule bamCompare:
+  input:
+    ip="04_deeptools/01_bw_coverage/{sample}_ip_{rep}.bw",
+    input="04_deeptools/01_bw_coverage/{sample}_input_{rep}.bw"
+  output:
+    bw="04_deeptools/03_bw_compare/{sample}_{rep}.bw"
+  log:
+    "logs/04_deeptools/03_bw_compare/{sample}_{rep}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bigwigCompare  \
+      -b1 {input.ip} \
+      -b2 {input.input} \
+      --skipZeroOverZero \
+      --skipNAs \
+      --operation log2 \
+      --outFileName {output.bw} \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --binSize 10 \
+       > {log} 2>&1"

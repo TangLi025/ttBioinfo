@@ -1,0 +1,59 @@
+SAMPLE=["M3IN_0h_input_rep2","M3IN_4h_input_rep1","M3IN_4h_input_rep2","M3IN_12h_input_rep1","M3IN_12h_input_rep2","M3IN_0h_ip_rep1","M3IN_0h_ip_rep2","M3IN_4h_ip_rep1","M3IN_4h_ip_rep2","M3IN_12h_ip_rep1","M3IN_12h_ip_rep2"]
+
+READ=["1","2"]
+
+INDEX_spikein="/disk/user_09/reference/index/bowtie2/spike_in/spike_in"
+
+MAPPING_THREADS = 15
+
+rule all:
+  input:
+    "05_m6A_spikein/01_bam_raw/flagstat/flagstat_summary.txt"
+    
+rule bowtie2_mapping:
+  input:
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz"
+  output:
+    bam="05_m6A_spikein/01_bam_raw/{sample}.bam"
+  params:
+    index=INDEX_spikein,
+    summary="05_m6A_spikein/01_bam_raw/{sample}.summary"
+  log:
+    "logs/05_m6A_spikein/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {params.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bam_flagstat:
+  input:
+    "05_m6A_spikein/01_bam_raw/{sample}.bam"
+  output:
+    "05_m6A_spikein/01_bam_raw/flagstat/{sample}.flagstat"
+  log:
+    "logs/05_m6A_spikein/01_bam_raw/flagstat/{sample}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary:
+  input:
+    expand("05_m6A_spikein/01_bam_raw/flagstat/{sample}.flagstat",sample=SAMPLE)
+  output:
+    "05_m6A_spikein/01_bam_raw/flagstat/flagstat_summary_num.txt",
+    "05_m6A_spikein/01_bam_raw/flagstat/flagstat_summary.txt"
+  log:
+    "logs/05_m6A_spikein/01_bam_raw/flagstat/flagstat_summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input} > {output[1]}
+    """

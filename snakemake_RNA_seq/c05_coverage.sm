@@ -1,0 +1,52 @@
+SAMPLE=["M3IN_0h","M3IN_4h","M3IN_12h"]
+
+REP=["rep1","rep2"]
+
+STRAND=["pos","neg"]
+
+THREADS = 10
+
+rule all:
+  input:
+    expand("04_deeptools/01_bw_coverage/{sample}_{rep}.bw",sample=SAMPLE,rep=REP),
+    expand("04_deeptools/02_bw_coverage_strand/{sample}_{rep}_{strand}.bw",sample=SAMPLE,rep=REP,strand=STRAND)
+
+rule bamCoverage:
+  input:
+    "03_hisat2_mapping/03_bam_merge/{sample}_{rep}.bam"
+  output:
+    bw="04_deeptools/01_bw_coverage/{sample}_{rep}.bw"
+  log:
+    "logs/04_deeptools/01_bw_coverage/{sample}_{rep}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing CPM \
+      --exactScaling \
+      --binSize 10 \
+       > {log} 2>&1"
+
+rule bamCoverage_strand:
+  input:
+    "03_hisat2_mapping/02_bam_separated/{sample}_{rep}_{strand}.bam"
+  output:
+    bw="04_deeptools/02_bw_coverage_strand/{sample}_{rep}_{strand}.bw"
+  log:
+    "logs/04_deeptools/02_bw_coverage_strand/{sample}_{rep}_{strand}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing CPM \
+      --exactScaling \
+      --binSize 10 \
+       > {log} 2>&1"
