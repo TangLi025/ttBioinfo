@@ -1,0 +1,802 @@
+---
+title: "r01_m6A_qc"
+author: "Tang Li"
+date: '2022-11-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ChIPpeakAnno)
+library(ggplot2)
+library(ggpubr)
+#devtools::install_github("ricardo-bion/ggradar")
+library(ggradar)
+require(ggseqlogo)
+library(Guitar)
+library(GenomicFeatures)
+library(patchwork)
+library(reshape2)
+library(rtracklayer)
+library(Rsubread)
+library(tidyverse)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/03_TC1_caRNA/02_m6A_qc/")
+```
+
+## replication
+```{r peakAnno replication}
+
+p0_bed1 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/p0_rep1_peaks.bed"
+p0_bed2 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/p0_rep2_peaks.bed"
+
+p10_bed1 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/p10_rep1_peaks.bed"
+p10_bed2 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/p10_rep2_peaks.bed"
+
+rp2_bed1 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/rp2_rep1_peaks.bed"
+rp2_bed2 <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/08_bed_filtered/rp2_rep2_peaks.bed"
+
+p0_1 <- ChIPpeakAnno::toGRanges(p0_bed1, format="BED", header=FALSE)
+p0_2 <- ChIPpeakAnno::toGRanges(p0_bed2, format="BED", header=FALSE)
+p10_1 <- ChIPpeakAnno::toGRanges(p10_bed1, format="BED", header=FALSE)
+p10_2 <- ChIPpeakAnno::toGRanges(p10_bed2, format="BED", header=FALSE)
+rp2_1 <- ChIPpeakAnno::toGRanges(rp2_bed1, format="BED", header=FALSE)
+rp2_2 <- ChIPpeakAnno::toGRanges(rp2_bed2, format="BED", header=FALSE)
+
+## must keep the class exactly same as gr1$score, i.e., numeric.
+p0_1$score <- as.numeric(p0_1$score) 
+p0_2$score <- as.numeric(p0_2$score) 
+p10_1$score <- as.numeric(p10_1$score) 
+p10_2$score <- as.numeric(p10_2$score) 
+rp2_1$score <- as.numeric(rp2_1$score) 
+rp2_2$score <- as.numeric(rp2_2$score) 
+
+ol_p0 <- findOverlapsOfPeaks(p0_1, p0_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_p0 <- addMetadata(ol_p0, colNames="score", FUN=base::mean) 
+ol_p0$peaklist[["p0_1///p0_2"]]
+
+ol_p10 <- findOverlapsOfPeaks(p10_1, p10_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_p10 <- addMetadata(ol_p10, colNames="score", FUN=base::mean) 
+ol_p10$peaklist[["p10_1///p10_2"]]
+
+ol_rp2 <- findOverlapsOfPeaks(rp2_1, rp2_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_rp2 <- addMetadata(ol_rp2, colNames="score", FUN=base::mean) 
+ol_rp2$peaklist[["rp2_1///rp2_2"]]
+
+pdf("02_replication/01_peak_overlap.pdf")
+makeVennDiagram(ol_p0, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5) 
+
+makeVennDiagram(ol_p10, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5) 
+
+makeVennDiagram(ol_rp2, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5) 
+
+dev.off()
+```
+
+```{r peak overlap between group}
+p0 <- ol_p0$peaklist[["p0_1///p0_2"]]
+p10 <- ol_p10$peaklist[["p10_1///p10_2"]]
+rp2 <- ol_rp2$peaklist[["rp2_1///rp2_2"]]
+
+#p0_export <- as.data.frame(p0)
+#write.table(p0_export[,c(1,2,3,6,5,5)],"~/LinLong/08_bed_filtered/dedup/p0_common_peaks.bed",quote = FALSE,row.names = FALSE,col.names = FALSE,sep="\t")
+
+ol <- findOverlapsOfPeaks(p0,p10,rp2)
+
+pdf("02_replication/02_peak_overlap_p0p10rp2.pdf")
+makeVennDiagram(ol, fill=c("#b3dbdc", "#fbb2c9","#f9be72"), # circle fill color
+                col=c("#D55E00", "#0072B2","#c5975a"), #circle border color
+                cat.col=c("#D55E00", "#0072B2","#c5975a"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2) 
+dev.off()
+```
+
+```{r peak anno}
+
+txdb <- makeTxDbFromGFF('/disk/user_09/reference/annotation/mm39/gencode.vM29.annotation.protein_coding.chr.gtf')
+annoData <- toGRanges(txdb, format='gene')
+annoData[1:2]
+
+
+overlaps_p0 <- ol$peaklist[["p0"]]
+overlaps_p10 <- ol$peaklist[["p10"]]
+overlaps_rp2 <- ol$peaklist[["rp2"]]
+overlaps <- ol$peaklist[["p0///p10///rp2"]]
+
+# binOverFeature(overlaps, annotationData=annoData,
+#                radius=5000, nbins=50, FUN=length, errFun=0,
+#                xlab="distance from TSS (bp)", ylab="count", 
+#                main="Distribution of aggregated peak numbers around TSS(rp2)")
+
+## check the genomic element distribution of the duplicates
+## the genomic element distribution will indicates the 
+## the correlation between duplicates.
+dir.create("05_annotation")
+pdf("05_annotation/01_peak_ElementDistribution.pdf")
+peaks_sep <- GRangesList(p0_1=p0_1,
+                        p0_2=p0_2,
+                        p10_1=p10_1,
+                        p10_2=p10_2,
+                        rp2_1=rp2_1,
+                        rp2_2=rp2_2)
+genomicElementDistribution(peaks_sep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+
+peaks_rep <- GRangesList(p0=p0,
+                         p10=p10,
+                     rp2=rp2)
+genomicElementDistribution(peaks_rep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+pdf("05_annotation/01_peak_ElementDistribution_circle.pdf")
+out_p0 <- genomicElementDistribution(peaks_rep$p0, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+
+out_p10 <- genomicElementDistribution(peaks_rep$p10, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+
+out_rp2 <- genomicElementDistribution(peaks_rep$rp2, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+## check the genomic element distribution for the overlaps
+## the genomic element distribution will indicates the 
+## the best methods for annotation.
+## The percentages in the legend show the percentage of peaks in 
+## each category.
+
+
+# out_rp2 <- genomicElementDistribution(overlaps_rp2, 
+#                                          TxDb = txdb,
+#                                          promoterRegion=c(upstream=2000, downstream=500),
+#                                          geneDownstream=c(upstream=0, downstream=5000),
+#                                          promoterLevel=list(
+#                                            # from 5' -> 3', fixed precedence 3' -> 5'
+#                                            breaks = c(-2000, -1000, -500, 0, 500),
+#                                            labels = c("upstream 1-2Kb", "upstream 0.5-1Kb", 
+#                                                       "upstream <500b", "TSS - 500b"),
+#                                            colors = c("#FFE5CC", "#FFCA99", 
+#                                                       "#FFAD65", "#FF8E32")))
+```
+
+```{bash peak_merge_saf}
+mkdir 01_peak_merge_saf
+for i in {p0,p10,rp2}; do
+ cat ~/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/${i}_rep1_rep2_common_peaks.bed | awk -F "\t" -v OFS="\t" '{print "peak"NR,$1,$2,$3,$4}'> 01_peak_merge_saf/${i}_common_peaks.saf
+done
+```
+
+```{r reproducibility raw}
+bam_dir <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/"
+sample_name <- paste(rep(c("p0","p10","rp2"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/flagstat/reads_summary.txt")$V1/2
+
+## p0
+p0_peak_fc <- featureCounts(files=bamfiles[1:4],
+                               annot.ext = '02_replication/01_peak_merge_saf/p0_common_peaks.saf',
+                               isGTFAnnotationFile = FALSE,
+                               useMetaFeatures = FALSE,
+                               allowMultiOverlap=FALSE,
+                            fracOverlap = 0.5,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+p0_counts <- p0_peak_fc$counts
+colnames(p0_counts) <- sample_name[1:4]
+
+colSums(p0_counts)
+p0_cpm <- as.data.frame(t(t(p0_counts)/total_Reads[1:4]* 1000000))#参考cpm定义
+colSums(p0_cpm)
+
+table(rowMeans(p0_cpm)>0)
+# FALSE  TRUE 
+#   422 23476
+p0_cpm <- p0_cpm[rowMeans(p0_cpm)>0,]
+
+p0_cpm$lfc_rep1 <- log2((p0_cpm$`p0_ip_rep1`+1)/(p0_cpm$`p0_input_rep1`+1))
+p0_cpm$lfc_rep2 <- log2((p0_cpm$`p0_ip_rep2`+1)/(p0_cpm$`p0_input_rep2`+1))
+summary(p0_cpm$lfc_rep1 )
+summary(p0_cpm$lfc_rep2 )
+
+#### p10
+p10_peak_fc <- featureCounts(files=bamfiles[5:8],
+                               annot.ext = '02_replication/01_peak_merge_saf/p10_common_peaks.saf',
+                               isGTFAnnotationFile = FALSE,
+                               useMetaFeatures = FALSE,
+                               allowMultiOverlap=FALSE,
+                            fracOverlap = 0.5,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+p10_counts <- p10_peak_fc$counts
+colnames(p10_counts) <- sample_name[5:8]
+
+colSums(p10_counts)
+p10_cpm <- as.data.frame(t(t(p10_counts)/total_Reads[5:8]* 1000000))#参考cpm定义
+colSums(p10_cpm)
+
+table(rowMeans(p10_cpm)>0)
+# FALSE  TRUE 
+#   690 29285 
+p10_cpm <- p10_cpm[rowMeans(p10_cpm)>0,]
+
+p10_cpm$lfc_rep1 <- log2((p10_cpm$`p10_ip_rep1`+1)/(p10_cpm$`p10_input_rep1`+1))
+p10_cpm$lfc_rep2 <- log2((p10_cpm$`p10_ip_rep2`+1)/(p10_cpm$`p10_input_rep2`+1))
+summary(p10_cpm$lfc_rep1 )
+summary(p10_cpm$lfc_rep2 )
+
+#### rp2
+rp2_peak_fc <- featureCounts(files=bamfiles[9:12],
+                               annot.ext = '02_replication/01_peak_merge_saf/rp2_common_peaks.saf',
+                               isGTFAnnotationFile = FALSE,
+                               useMetaFeatures = FALSE,
+                               allowMultiOverlap=FALSE,
+                            fracOverlap = 0.5,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+rp2_counts <- rp2_peak_fc$counts
+colnames(rp2_counts) <- sample_name[9:12]
+
+colSums(rp2_counts)
+rp2_cpm <- as.data.frame(t(t(rp2_counts)/total_Reads[13:16]* 1000000))#参考cpm定义
+colSums(rp2_cpm)
+
+table(rowMeans(rp2_cpm)>0)
+# FALSE  TRUE 
+#   678 28240 
+rp2_cpm <- rp2_cpm[rowMeans(rp2_cpm)>0,]
+
+rp2_cpm$lfc_rep1 <- log2((rp2_cpm$`rp2_ip_rep1`+1)/(rp2_cpm$`rp2_input_rep1`+1))
+rp2_cpm$lfc_rep2 <- log2((rp2_cpm$`rp2_ip_rep2`+1)/(rp2_cpm$`rp2_input_rep2`+1))
+summary(rp2_cpm$lfc_rep1 )
+summary(rp2_cpm$lfc_rep2 )
+
+pdf("02_replication/03_raw_reproducibility.pdf")
+ggplot(p0_cpm, aes(x = lfc_rep1, y = lfc_rep2)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson")+
+  labs(x="Replicate 1", y="Replicate 2",title='p0 raw')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=22,face="bold", hjust = 0.45) ) 
+
+ggplot(p10_cpm, aes(x = lfc_rep1, y = lfc_rep2)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson")+
+  labs(x="Replicate 1", y="Replicate 2",title='p10 raw')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=22,face="bold", hjust = 0.45) ) 
+
+ggplot(rp2_cpm, aes(x = lfc_rep1, y = lfc_rep2)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson")+
+  labs(x="Replicate 1", y="Replicate 2",title='rp2 raw')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=22,face="bold", hjust = 0.45) ) 
+
+dev.off()
+
+```
+
+```{r reproducibility spikein}
+
+scale_facter <- data.frame(group=factor(c("p0","p0","p10","p10","rp2","rp2"),levels=c("p0","p10","rp2")),
+                      m6A_level=c(0.989195562,1.010804438,1.220365379,1.183124775,0.910537363,0.940152954))
+
+#### p0
+p0_cpm$lfc_rep1_spikein <- log2((p0_cpm$`p0_ip_rep1`*scale_facter$m6A_level[1]+1)/(p0_cpm$`p0_input_rep1`+1))
+p0_cpm$lfc_rep2_spikein <- log2((p0_cpm$`p0_ip_rep2`*scale_facter$m6A_level[2]+1)/(p0_cpm$`p0_input_rep2`+1))
+summary(p0_cpm$lfc_rep1_spikein )
+summary(p0_cpm$lfc_rep2_spikein )
+
+#### p10
+p10_cpm$lfc_rep1_spikein <- log2((p10_cpm$`p10_ip_rep1`*scale_facter$m6A_level[3]+1)/(p10_cpm$`p10_input_rep1`+1))
+p10_cpm$lfc_rep2_spikein <- log2((p10_cpm$`p10_ip_rep2`*scale_facter$m6A_level[4]+1)/(p10_cpm$`p10_input_rep2`+1))
+summary(p10_cpm$lfc_rep1_spikein )
+summary(p10_cpm$lfc_rep2_spikein )
+
+#### rp2
+rp2_cpm$lfc_rep1_spikein <- log2((rp2_cpm$`rp2_ip_rep1`*scale_facter$m6A_level[5]+1)/(rp2_cpm$`rp2_input_rep1`+1))
+rp2_cpm$lfc_rep2_spikein <- log2((rp2_cpm$`rp2_ip_rep2`*scale_facter$m6A_level[6]+1)/(rp2_cpm$`rp2_input_rep2`+1))
+summary(rp2_cpm$lfc_rep1_spikein )
+summary(rp2_cpm$lfc_rep2_spikein )
+
+pdf("02_replication/04_spikein_reproducibility.pdf")
+ggplot(p0_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='p0 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+ggplot(p10_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='p10 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+ggplot(rp2_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='rp2 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),
+        axis.title.y = element_text(size = 20,face="bold"),
+        plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+dev.off()
+
+```
+
+```{r peak m6A level change}
+bam_dir <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/"
+sample_name <- paste(rep(c("p0","p10","rp2"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/flagstat/reads_summary.txt")$V1/2
+total_Reads <- total_Reads[c(1:8,13:16)]
+
+scale_facter <- data.frame(group=factor(c("p0","p10","rp2"),levels=c("p0","p10","rp2")),
+                      m6A_level=c(1,1.201745077,0.925345158))
+
+## p0p10
+p0p10_peak_fc <- featureCounts(files=bamfiles[1:8],
+                               annot.ext = '/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/02_merge_peaks/p0p10.merge.saf',
+                               isGTFAnnotationFile = FALSE,
+                               useMetaFeatures = FALSE,
+                               allowMultiOverlap=FALSE,
+                            fracOverlap = 0.5,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+p0p10_counts <- p0p10_peak_fc$counts
+colnames(p0p10_counts) <- sample_name[1:8]
+
+colSums(p0p10_counts)
+p0p10_cpm <- as.data.frame(t(t(p0p10_counts)/total_Reads[1:8]* mean(total_Reads[1:8])))#参考cpm定义
+colSums(p0p10_cpm)
+
+table(rowMeans(p0p10_cpm)>0)
+# FALSE  TRUE 
+#     4 37084 
+p0p10_cpm <- p0p10_cpm[rowMeans(p0p10_cpm)>0,]
+
+p0p10_cpm_mean <- data.frame(p0_input=apply(p0p10_cpm[,1:2],1,mean),
+                             p0_ip=apply(p0p10_cpm[,3:4],1,mean),
+                             p10_input=apply(p0p10_cpm[,5:6],1,mean),
+                             p10_ip=apply(p0p10_cpm[,7:8],1,mean))
+### 到底是加1还是0.001还是不加？
+p0p10_cpm_mean$lfc_p0_spikein <- log2((p0p10_cpm_mean$`p0_ip`*scale_facter$m6A_level[1]+1)/(p0p10_cpm_mean$`p0_input`+1))
+p0p10_cpm_mean$lfc_p10_spikein <- log2((p0p10_cpm_mean$`p10_ip`*scale_facter$m6A_level[2]+1)/(p0p10_cpm_mean$`p10_input`+1))
+
+p0p10_cpm_mean <- p0p10_cpm_mean[is.finite(apply(p0p10_cpm_mean,1,sum)),]
+summary(p0p10_cpm_mean$lfc_p0_spikein )
+summary(p0p10_cpm_mean$lfc_p10_spikein )
+
+p0p10_cpm_mean$group <- ifelse(p0p10_cpm_mean$lfc_p0_spikein-p0p10_cpm_mean$lfc_p10_spikein>1,"p0_high",ifelse(p0p10_cpm_mean$lfc_p10_spikein-p0p10_cpm_mean$lfc_p0_spikein>1,"p10_high","NC"))
+p0p10_cpm_mean_filter <- p0p10_cpm_mean[(p0p10_cpm_mean$lfc_p0_spikein > 1) | (p0p10_cpm_mean$lfc_p10_spikein > 1),]
+table(p0p10_cpm_mean_filter$group)
+   #    NC  p0_high p10_high 
+   # 20356      940     3521
+
+## p10rp2
+p10rp2_peak_fc <- featureCounts(files=bamfiles[5:12],
+                               annot.ext = '/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/02_merge_peaks/rp2p10.merge.saf',
+                               isGTFAnnotationFile = FALSE,
+                               useMetaFeatures = FALSE,
+                               allowMultiOverlap=FALSE,
+                            fracOverlap = 0.5,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+p10rp2_counts <- p10rp2_peak_fc$counts
+colnames(p10rp2_counts) <- sample_name[5:12]
+
+colSums(p10rp2_counts)
+p10rp2_cpm <- as.data.frame(t(t(p10rp2_counts)/total_Reads[5:12]* 1000000))#参考cpm定义
+colSums(p10rp2_cpm)
+
+table(rowMeans(p10rp2_cpm)>0)
+# FALSE  TRUE 
+#     8 37980 
+p10rp2_cpm <- p10rp2_cpm[rowMeans(p10rp2_cpm)>0,]
+
+p10rp2_cpm_mean <- data.frame(p10_input=apply(p10rp2_cpm[,1:2],1,mean),
+                             p10_ip=apply(p10rp2_cpm[,3:4],1,mean),
+                             rp2_input=apply(p10rp2_cpm[,5:6],1,mean),
+                             rp2_ip=apply(p10rp2_cpm[,7:8],1,mean))
+
+p10rp2_cpm_mean$lfc_p10_spikein <- log2((p10rp2_cpm_mean$`p10_ip`*scale_facter$m6A_level[2]+1)/(p10rp2_cpm_mean$`p10_input`+1))
+p10rp2_cpm_mean$lfc_rp2_spikein <- log2((p10rp2_cpm_mean$`rp2_ip`*scale_facter$m6A_level[3]+1)/(p10rp2_cpm_mean$`rp2_input`+1))
+summary(p10rp2_cpm_mean$lfc_p10_spikein )
+summary(p10rp2_cpm_mean$lfc_rp2_spikein )
+
+p10rp2_cpm_mean$group <- ifelse(p10rp2_cpm_mean$lfc_p10_spikein-p10rp2_cpm_mean$lfc_rp2_spikein>1,"p10_high",ifelse(p10rp2_cpm_mean$lfc_rp2_spikein-p10rp2_cpm_mean$lfc_p10_spikein>1,"rp2_high","NC"))
+p10rp2_cpm_mean_filter <- p10rp2_cpm_mean[(p10rp2_cpm_mean$lfc_p10_spikein > 1) | (p10rp2_cpm_mean$lfc_rp2_spikein > 1),]
+table(p10rp2_cpm_mean_filter$group)
+   #    NC p10_high rp2_high 
+   # 19467     2916      256
+dir.create("06_peak_m6A_level")
+pdf("06_peak_m6A_level/01_m6A_level_change.pdf",width = 4,height = 4)
+ggplot(p0p10_cpm_mean_filter, aes(x = lfc_p0_spikein, y = lfc_p10_spikein,col=group)) +
+  geom_point(alpha=0.5,show.legend = F) + # color="#99CC33"
+  geom_text(label="3521",inherit.aes = F,x=-0.5,y=3,size=6)+
+  geom_text(label="940",inherit.aes = F,x=3.5,y=-0.5,size=6)+
+  labs(x=expression(m^6*A~level~"in"~p0), y=expression(m^6*A~level~"in"~p10))+
+  theme_bw()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=22,face="bold", hjust = 0.45) ) +
+  scale_color_manual(values = c("p0_high" = "#ffa363", "p10_high" = "#9218ff"))+
+  #xlim(-6,8)+
+  #ylim(-4,4)+
+  coord_fixed(ratio=1)
+
+ggplot(p10rp2_cpm_mean_filter, aes(x = lfc_rp2_spikein, y = lfc_p10_spikein,col=group)) +
+  geom_point(alpha=0.5,show.legend = F) + # color="#99CC33"
+  geom_text(label="256",inherit.aes = F,x=3,y=-0,size=6)+
+  geom_text(label="2916",inherit.aes = F,x=0.2,y=3.5,size=6)+
+  labs(x=expression(m^6*A~level~"in"~rp2), y=expression(m^6*A~level~"in"~p10))+
+  theme_bw()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=22,face="bold", hjust = 0.45) ) +
+  scale_color_manual(values = c("p10_high" = "#9218ff", "rp2_high" = "#ffa363"))+
+  #xlim(-6,8)+
+  #ylim(-4,4)+
+  coord_fixed(ratio=1)
+
+dev.off()
+
+```
+
+```{r reproducibility spikein}
+
+
+
+#### p10
+p10_cpm$lfc_rep1_spikein <- log2((p10_cpm$`p10_ip_rep1`*scale_facter$m6A_level[3]+1)/(p10_cpm$`p10_input_rep1`+1))
+p10_cpm$lfc_rep2_spikein <- log2((p10_cpm$`p10_ip_rep2`*scale_facter$m6A_level[4]+1)/(p10_cpm$`p10_input_rep2`+1))
+summary(p10_cpm$lfc_rep1_spikein )
+summary(p10_cpm$lfc_rep2_spikein )
+
+#### rp2
+rp2_cpm$lfc_rep1_spikein <- log2((rp2_cpm$`rp2_ip_rep1`*scale_facter$m6A_level[5]+1)/(rp2_cpm$`rp2_input_rep1`+1))
+rp2_cpm$lfc_rep2_spikein <- log2((rp2_cpm$`rp2_ip_rep2`*scale_facter$m6A_level[6]+1)/(rp2_cpm$`rp2_input_rep2`+1))
+summary(rp2_cpm$lfc_rep1_spikein )
+summary(rp2_cpm$lfc_rep2_spikein )
+
+pdf("02_replication/04_spikein_reproducibility.pdf")
+ggplot(p0_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='p0 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+ggplot(p10_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='p10 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),axis.title.y = element_text(size = 20,face="bold"),plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+ggplot(rp2_cpm, aes(x = lfc_rep1_spikein, y = lfc_rep2_spikein)) +
+  geom_point(alpha=0.5) + # color="#99CC33"
+  geom_smooth(method = "lm",color= "#377EB8")+
+  stat_cor(method = "pearson",size=8)+
+  labs(x="Replicate 1", y="Replicate 2",title='rp2 spikein')+
+  theme_pubr()+
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5), "cm"))+ #调整与图片边缘的距离
+  theme(axis.title.x = element_text(size = 20,face="bold"),
+        axis.title.y = element_text(size = 20,face="bold"),
+        plot.title = element_text(size=25,face="bold", hjust = 0.45) ) 
+
+dev.off()
+
+```
+
+### homer annotation using basic_pc_lnc.gtf
+```{r gtf_basic_pc_lncRNA}
+gtf_all <- import("~/reference/annotation/mm39/raw/gencode.vM29.annotation.gtf")
+gtf_basic <- import("~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf")
+
+gtf_all[gtf_all$type=="gene",]
+gtf_basic[gtf_basic$type=="gene",]
+
+table(gtf_all[gtf_all$type=="gene",]$gene_type)
+gtf_basic[gtf_basic$type=="gene",]
+
+gtf_all[gtf_all$type=="transcript",]
+gtf_basic[gtf_basic$type=="transcript",]
+
+table(gtf_all[gtf_all$type=="transcript",]$transcript_type)
+table(gtf_basic[gtf_basic$type=="transcript",]$transcript_type)
+
+gtf_basic_pc_lnc <- gtf_basic[gtf_basic$gene_type %in% c("lncRNA","protein_coding"),]
+
+table(gtf_basic_pc_lnc[gtf_basic_pc_lnc$type=="transcript",]$transcript_type)
+
+export(gtf_basic_pc_lnc,"~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf","gtf")
+
+```
+
+```{r anno_distribution}
+
+# read annotation file from macs2 and homer
+p0_anno <- read.delim('05_annotation/p0_annotation.txt',header = T)
+p10_anno <- read.delim('05_annotation/p10_annotation.txt',header = T)
+rp2_anno <- read.delim('05_annotation/rp2_annotation.txt',header = T)
+
+# save as list
+df <- list(p0 = p0_anno$Annotation,p10 = p10_anno$Annotation,rp2 = rp2_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('p0','p10','rp2')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('p0','p10','rp2'))
+
+pdf("./05_annotation/02_Distribution_of_m6A_peaks.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,2,0.5,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+### homer mm39 to mm10
+```{bash}
+mkdir 05_annotation/01_commonpeak_mm10
+for sample in {p0,p10,rp2}
+do
+/disk/user_09/software/UCSCtools/liftOver /disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/${sample}_rep1_rep2_common_peaks.bed /disk/user_09/reference/liftover/mm39ToMm10.over.chain.gz 05_annotation/01_commonpeak_mm10/${sample}_common_peaks_mm10.bed 05_annotation/01_commonpeak_mm10/${sample}_common_peaks_mm10_unMapped.bed &
+done
+```
+
+```{r anno_distribution mm10}
+
+# read annotation file from macs2 and homer
+p0_anno <- read.delim('05_annotation/mm10/p0_annotation.txt',header = T)
+p10_anno <- read.delim('05_annotation/mm10/p10_annotation.txt',header = T)
+rp2_anno <- read.delim('05_annotation/mm10/rp2_annotation.txt',header = T)
+
+# save as list
+df <- list(p0 = p0_anno$Annotation,p10 = p10_anno$Annotation,rp2 = rp2_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('p0','p10','rp2')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('p0','p10','rp2'))
+
+pdf("./05_annotation/03_Distribution_of_m6A_peaks_mm10.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+```{r radar_plot}
+type_comb_perc <- type_comb[,1:8]/rowSums(type_comb[,1:8])
+type_comb_perc <- cbind(name=type_comb$name,type_comb_perc)
+type_comb_perc
+
+pdf("05_annotation/04_radar_mm10.pdf")
+ggradar(type_comb_perc[1:2,],grid.max=0.5,grid.mid = 0.25,
+        values.radar = c("","25%","50%"),
+        legend.position = "top")
+dev.off()
+```
+
+### metagene
+```{r metagene}
+common_peak_dir <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks"
+p0_common_peaks <- import(file.path(common_peak_dir,"p0_rep1_rep2_common_peaks.bed"))
+p10_common_peaks <- import(file.path(common_peak_dir,"p10_rep1_rep2_common_peaks.bed"))
+rp2_common_peaks <- import(file.path(common_peak_dir,"rp2_rep1_rep2_common_peaks.bed"))
+
+# read bed file
+stBedFiles <- list(file.path(common_peak_dir,"p0_rep1_rep2_common_peaks.bed"),
+                   file.path(common_peak_dir,"p10_rep1_rep2_common_peaks.bed"),
+                   file.path(common_peak_dir,"rp2_rep1_rep2_common_peaks.bed"))
+
+# prepare annotation file
+# txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+gtffile <- file.path("/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+# draw
+pdf("./04_metagene/metagene_profiles_of_m6A_peak.pdf")
+GuitarPlot(txTxdb = txdb,
+           txGuitarTxdbSaveFile = "txGuitarTxdbSaveFile",
+                   stBedFiles = stBedFiles,
+                   headOrtail = T,
+                   enableCI = FALSE,
+                   mapFilterTranscript = TRUE,
+                   pltTxType = c("mrna"),
+                   stGroupName = c("p0","p10","rp2"))
+dev.off()
+
+p <- GuitarPlot(txTxdb = txdb,
+                   stBedFiles = stBedFiles,
+                   headOrtail = F,
+                   enableCI = FALSE,
+                   mapFilterTranscript = T,
+                   pltTxType = c("mrna"),
+                   stGroupName = c("p0","p10","rp2"))
+
+pdf("./04_metagene/metagene_profiles_of_m6A_peak2.pdf")
+
+p+theme_bw()+
+  theme(plot.margin = unit(c(4,0.5,4,0.5),"cm"))
+dev.off()
+
+
+
+```
+
+
+### motif
+```{r}
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/p0/homerResults/motif23.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+p0_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("p0")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/p10/homerResults/motif24.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+p10_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("p10")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/01_motif/rp2/homerResults/motif8.similar1.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+rp2_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("rp2")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pdf("03_motif_logo/01_motif_logo.pdf",width = 8,height = 9)
+p0_motif / p10_motif / rp2_motif
+dev.off()
+
+```
+
+
+
+
+
+

@@ -1,0 +1,243 @@
+---
+title: "03_repeats"
+author: "Tang Li"
+date: '2022-11-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggprism)
+library(tidyverse)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/06_repeats/")
+```
+
+```{bash featureCounts}
+featureCounts -a /disk/user_09/reference/annotation/mm39/raw/mm39_repeats_family.saf \
+-o mm39_repeats_family_fc_raw.txt \
+-F SAF -O --fracOverlap 0.5 -M -s 2 -T 50 -p \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep2.bam \
+1> hg38_repeats_family_fc_raw.log 2>&1 &
+
+featureCounts -a /disk/user_09/reference/annotation/mm39/raw/mm39_repeats_ERVL.saf \
+-o mm39_repeats_ERVL_fc_raw.txt \
+-F SAF -O --fracOverlap 0.5 -M -s 2 -T 50 -p \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep2.bam \
+1> mm39_repeats_ERVL_fc_raw.log 2>&1 &
+
+awk -v OFS='\t' '{print $1,$7,$8,$11,$12,$13,$14,$15,$16,$19,$20,$21,$22}' mm39_repeats_ERVL_fc_raw.txt > mm39_repeats_ERVL_fc_read.txt
+awk -v OFS='\t' '{print $1,$7,$8,$11,$12,$13,$14,$15,$16,$19,$20,$21,$22}' mm39_repeats_family_fc_raw.txt > mm39_repeats_family_fc_read.txt
+```
+
+```{r family}
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_num_summary.txt")$V1/2
+
+total_Reads
+
+repeat_family_counts <- read.table("01_featureCounts/mm39_repeats_family_fc_read.txt",header = T)
+rownames(repeat_family_counts) <- repeat_family_counts$Geneid
+repeat_family_counts <- repeat_family_counts[,3:14]
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),times=2,each=2),
+                     rep(c("input","ip"),each=6),
+                     rep(c("1","2"),times=6),sep='_')
+sample_name
+colnames(repeat_family_counts) <- sample_name
+
+colSums(repeat_family_counts)
+repeat_family_cpm <- as.data.frame(t(t(repeat_family_counts)/total_Reads* 1000000))#参考cpm定义
+colSums(repeat_family_cpm)
+
+sort(rowSums(repeat_family_cpm),decreasing = T)
+repeat_family_other <- sort(rowSums(repeat_family_cpm),decreasing = T)[18:62]
+repeat_family_cpm <- rbind(repeat_family_cpm[!rownames(repeat_family_cpm) %in% names(repeat_family_other),],other=colSums(repeat_family_cpm[names(repeat_family_other),]))
+
+table(rowMeans(repeat_family_cpm)>0)
+
+repeat_family_cpm <- repeat_family_cpm[rowMeans(repeat_family_cpm)>0,]
+
+repeat_family_cpm_mean <- data.frame(family=rownames(repeat_family_cpm),
+                                     M3IN_0h_input=apply(repeat_family_cpm[,1:2],1,mean),
+                             M3IN_0h_ip=apply(repeat_family_cpm[,7:8],1,mean),
+                             M3IN_4h_input=apply(repeat_family_cpm[,3:4],1,mean),
+                             M3IN_4h_ip=apply(repeat_family_cpm[,9:10],1,mean),
+                             M3IN_12h_input=apply(repeat_family_cpm[,5:6],1,mean),
+                             M3IN_12h_ip=apply(repeat_family_cpm[,11:12],1,mean))
+colSums(repeat_family_cpm_mean[2:7])
+### 到底是加1还是0.001还是不加？实用主义。
+repeat_family_cpm_mean$M3IN_0h_m6A <- log2((repeat_family_cpm_mean$`M3IN_0h_ip`+1)/(repeat_family_cpm_mean$`M3IN_0h_input`+1))
+repeat_family_cpm_mean$M3IN_4h_m6A <- log2((repeat_family_cpm_mean$`M3IN_4h_ip`+1)/(repeat_family_cpm_mean$`M3IN_4h_input`+1))
+repeat_family_cpm_mean$M3IN_12h_m6A <- log2((repeat_family_cpm_mean$`M3IN_12h_ip`+1)/(repeat_family_cpm_mean$`M3IN_12h_input`+1))
+
+repeat_family_cpm_mean$m6A_M3IN_4h_M3IN_0h <- repeat_family_cpm_mean$M3IN_4h_m6A-repeat_family_cpm_mean$M3IN_0h_m6A
+repeat_family_cpm_mean$m6A_M3IN_12h_M3IN_0h <- repeat_family_cpm_mean$M3IN_12h_m6A-repeat_family_cpm_mean$M3IN_0h_m6A
+
+repeat_family_cpm_mean$exp_M3IN_4h_M3IN_0h <- log2((repeat_family_cpm_mean$M3IN_4h_input+1)/(repeat_family_cpm_mean$M3IN_0h_input+1))
+repeat_family_cpm_mean$exp_M3IN_12h_M3IN_0h <- log2((repeat_family_cpm_mean$M3IN_12h_input+1)/(repeat_family_cpm_mean$M3IN_0h_input+1))
+
+tt_wt(repeat_family_cpm_mean,path = "02_m6A_level/repeat_family_cpm_mean.txt",row.names = F,col.names = T)
+
+#scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+#scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+
+dir.create("02_m6A_level")
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(4.5,0.5,4.5,0.5),"cm"))
+
+pdf("02_m6A_level/01_m6A_exp_level.pdf")
+ggplot(repeat_family_cpm_mean)+
+  geom_col(aes(x=reorder(family,m6A_M3IN_4h_M3IN_0h),y=m6A_M3IN_4h_M3IN_0h),fill="#DB5C25")+
+  labs(x=NULL,y=expression(m^6*A~log[2]~"(M3IN_4h/M3IN_0h)"))+#标题
+   geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_family_cpm_mean)+
+  geom_col(aes(x=reorder(family,m6A_M3IN_12h_M3IN_0h),y=m6A_M3IN_12h_M3IN_0h),fill="#DB5C25")+
+  labs(x=NULL,y=expression(m^6*A~log[2]~"(M3IN_12h/M3IN_0h)"))+#标题
+    geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_family_cpm_mean)+
+  geom_col(aes(x=reorder(family,exp_M3IN_4h_M3IN_0h),y=exp_M3IN_4h_M3IN_0h),fill="#c6a46b")+
+  labs(x=NULL,y=expression(exp~log[2]~"(M3IN_4h/M3IN_0h)"))+#标题
+    geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_family_cpm_mean)+
+  geom_col(aes(x=reorder(family,exp_M3IN_12h_M3IN_0h),y=exp_M3IN_12h_M3IN_0h),fill="#c6a46b")+
+  labs(x=NULL,y=expression(exp~log[2]~"(M3IN_12h/M3IN_0h)"))+#标题
+  geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+dev.off()
+
+```
+
+```{r ERVL}
+repeat_ERVL_counts <- read.table("01_featureCounts/mm39_repeats_ERVL_fc_read.txt",header = T)
+rownames(repeat_ERVL_counts) <- repeat_ERVL_counts$Geneid
+repeat_ERVL_counts <- repeat_ERVL_counts[,3:14]
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),times=2,each=2),
+                     rep(c("input","ip"),each=6),
+                     rep(c("1","2"),times=6),sep='_')
+sample_name
+colnames(repeat_ERVL_counts) <- sample_name
+
+colSums(repeat_ERVL_counts)
+repeat_ERVL_cpm <- as.data.frame(t(t(repeat_ERVL_counts)/total_Reads* 1000000))#参考cpm定义
+colSums(repeat_ERVL_cpm)
+
+sort(rowSums(repeat_ERVL_cpm),decreasing = T)
+repeat_ERVL_other <- sort(rowSums(repeat_ERVL_cpm),decreasing = T)[18:116]
+repeat_ERVL_cpm <- rbind(repeat_ERVL_cpm[!rownames(repeat_ERVL_cpm) %in% names(repeat_ERVL_other),],other=colSums(repeat_ERVL_cpm[names(repeat_ERVL_other),]))
+
+table(rowMeans(repeat_ERVL_cpm)>0)
+
+repeat_ERVL_cpm <- repeat_ERVL_cpm[rowMeans(repeat_ERVL_cpm)>0,]
+
+repeat_ERVL_cpm_mean <- data.frame(ERVL=rownames(repeat_ERVL_cpm),
+                                     M3IN_0h_input=apply(repeat_ERVL_cpm[,1:2],1,mean),
+                             M3IN_0h_ip=apply(repeat_ERVL_cpm[,7:8],1,mean),
+                             M3IN_4h_input=apply(repeat_ERVL_cpm[,3:4],1,mean),
+                             M3IN_4h_ip=apply(repeat_ERVL_cpm[,9:10],1,mean),
+                             M3IN_12h_input=apply(repeat_ERVL_cpm[,5:6],1,mean),
+                             M3IN_12h_ip=apply(repeat_ERVL_cpm[,11:12],1,mean))
+colSums(repeat_ERVL_cpm_mean[2:7])
+### 到底是加1还是0.001还是不加？实用主义。
+repeat_ERVL_cpm_mean$M3IN_0h_m6A <- log2((repeat_ERVL_cpm_mean$`M3IN_0h_ip`+1)/(repeat_ERVL_cpm_mean$`M3IN_0h_input`+1))
+repeat_ERVL_cpm_mean$M3IN_4h_m6A <- log2((repeat_ERVL_cpm_mean$`M3IN_4h_ip`+1)/(repeat_ERVL_cpm_mean$`M3IN_4h_input`+1))
+repeat_ERVL_cpm_mean$M3IN_12h_m6A <- log2((repeat_ERVL_cpm_mean$`M3IN_12h_ip`+1)/(repeat_ERVL_cpm_mean$`M3IN_12h_input`+1))
+
+repeat_ERVL_cpm_mean$m6A_M3IN_4h_M3IN_0h <- repeat_ERVL_cpm_mean$M3IN_4h_m6A-repeat_ERVL_cpm_mean$M3IN_0h_m6A
+repeat_ERVL_cpm_mean$m6A_M3IN_12h_M3IN_0h <- repeat_ERVL_cpm_mean$M3IN_12h_m6A-repeat_ERVL_cpm_mean$M3IN_0h_m6A
+
+repeat_ERVL_cpm_mean$exp_M3IN_4h_M3IN_0h <- log2((repeat_ERVL_cpm_mean$M3IN_4h_input+1)/(repeat_ERVL_cpm_mean$M3IN_0h_input+1))
+repeat_ERVL_cpm_mean$exp_M3IN_12h_M3IN_0h <- log2((repeat_ERVL_cpm_mean$M3IN_12h_input+1)/(repeat_ERVL_cpm_mean$M3IN_0h_input+1))
+
+tt_wt(repeat_ERVL_cpm_mean,path = "02_m6A_level/repeat_ERVL_cpm_mean.txt",row.names = F,col.names = T)
+#scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+#scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+
+dir.create("02_m6A_level")
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(4.5,0.5,4.5,0.5),"cm"))
+
+pdf("02_m6A_level/02_m6A_exp_level_ERVL.pdf")
+ggplot(repeat_ERVL_cpm_mean)+
+  geom_col(aes(x=reorder(ERVL,m6A_M3IN_4h_M3IN_0h),y=m6A_M3IN_4h_M3IN_0h),fill="#DB5C25")+
+  labs(x=NULL,y=expression(m^6*A~log[2]~"(M3IN_4h/M3IN_0h)"))+#标题
+   geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_ERVL_cpm_mean)+
+  geom_col(aes(x=reorder(ERVL,m6A_M3IN_12h_M3IN_0h),y=m6A_M3IN_12h_M3IN_0h),fill="#DB5C25")+
+  labs(x=NULL,y=expression(m^6*A~log[2]~"(M3IN_12h/M3IN_0h)"))+#标题
+    geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_ERVL_cpm_mean)+
+  geom_col(aes(x=reorder(ERVL,exp_M3IN_4h_M3IN_0h),y=exp_M3IN_4h_M3IN_0h),fill="#c6a46b")+
+  labs(x=NULL,y=expression(exp~log[2]~"(M3IN_4h/M3IN_0h)"))+#标题
+    geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+    
+ggplot(repeat_ERVL_cpm_mean)+
+  geom_col(aes(x=reorder(ERVL,exp_M3IN_12h_M3IN_0h),y=exp_M3IN_12h_M3IN_0h),fill="#c6a46b")+
+  labs(x=NULL,y=expression(exp~log[2]~"(M3IN_12h/M3IN_0h)"))+#标题
+  geom_hline(yintercept = 0.58,linetype="dashed")+
+  geom_hline(yintercept = -0.58,linetype="dashed")+
+  theme_bar
+dev.off()
+
+```
+
+
+
+
+
+
+

@@ -1,0 +1,66 @@
+SAMPLE=["M3IN_0h","M3IN_4h","M3IN_12h"]
+
+REP=["rep1","rep2"]
+
+GENOME="/disk/user_09/reference/genome/mm/GRCm39.genome.fa"
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.annotation.gtf"
+
+rule all:
+  input:
+    expand("05_m6A_peak/02_bed_modify/01_motif3/{sample}_{rep}/homerResults.html",sample=SAMPLE,rep=REP),
+    expand("05_m6A_peak/03_bed_merge/04_motif3/{sample}/homerResults.html",sample=SAMPLE),
+    "05_m6A_peak/04_bed_group_merge/01_motif3/m6A_peak_all/homerResults.html"
+    
+rule find_motif:
+  input:
+    "05_m6A_peak/02_bed_modify/{sample}_{rep}_peaks.bed"
+  output:
+    "05_m6A_peak/02_bed_modify/01_motif3/{sample}_{rep}/homerResults.html"
+  log:
+    "logs/05_m6A_peak/02_bed_modify/01_motif3/{sample}_{rep}_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="05_m6A_peak/02_bed_modify/01_motif3/{sample}_{rep}"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """
+
+rule find_motif_rep_merge:
+  input:
+    "05_m6A_peak/03_bed_merge/03_common_peak_merge/{sample}.bed"
+  output:
+    "05_m6A_peak/03_bed_merge/04_motif3/{sample}/homerResults.html"
+  log:
+    "logs/05_m6A_peak/03_bed_merge/04_motif3/{sample}_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="05_m6A_peak/03_bed_merge/04_motif3/{sample}"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """
+
+rule find_motif_group_merge:
+  input:
+    "05_m6A_peak/04_bed_group_merge/m6A_peak_all.bed"
+  output:
+    "05_m6A_peak/04_bed_group_merge/01_motif3/m6A_peak_all/homerResults.html"
+  log:
+    "logs/05_m6A_peak/04_bed_group_merge/01_motif3/m6A_peak_all_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="05_m6A_peak/04_bed_group_merge/01_motif3/m6A_peak_all"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """

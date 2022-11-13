@@ -1,0 +1,125 @@
+SAMPLE=["p0","p10","rp2"]
+
+REP=["rep1","rep2"]
+
+TIMES=["2","3","4","5"]
+
+GENOME="/disk/user_09/reference/genome/mm/GRCm39.genome.fa"
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf"
+GTF_Refseq_Curated="/disk/user_09/reference/annotation/mm39/raw/mm39_RefSeq_Curated.gtf"
+GTF_Refseq_All="/disk/user_09/reference/annotation/mm39/raw/mm39_RefSeq_All.gtf"
+
+# dir: /disk/user_09/Data/01_TC1/03_TC1_caRNA/02_m6A_qc/
+rule all:
+  input:
+    expand("05_annotation/{sample}_annotation.txt",sample=SAMPLE),
+    expand("05_annotation/Refseq_Curated/{sample}_annotation.txt",sample=SAMPLE),
+    expand("05_annotation/Refseq_All/{sample}_annotation.txt",sample=SAMPLE),
+    expand("05_annotation/mm10/{sample}_annotation.txt",sample=SAMPLE),
+    expand("03_motif_logo/0{times}_motif/{sample}/homerResults.html",sample=SAMPLE,times=TIMES),
+    
+
+rule find_motif_rep_merge:
+  input:
+    "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/{sample}_rep1_rep2_common_peaks.bed"
+  output:
+    "03_motif_logo/0{times}_motif/{sample}/homerResults.html"
+  log:
+    "logs/03_motif_logo/0{times}_motif/{sample}_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="03_motif_logo/0{times}_motif/{sample}"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """
+
+rule peak_annotation_homer_rep_merge:
+  input:
+    "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/{sample}_rep1_rep2_common_peaks.bed"
+  output:
+    "05_annotation/{sample}_annotation.txt"
+  log:
+    "logs/05_annotation/{sample}_annotation.log"
+  params:
+    genome=GENOME,
+    gtf=GTF
+  threads:2
+  shell:
+    """
+    cat {input[0]} \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - \
+      {params.genome} \
+      -gtf {params.gtf} \
+      -cpu {threads} \
+      1> {output} 2> {log}
+    """
+
+rule peak_annotation_homer_rep_merge_mm10:
+  input:
+    "05_annotation/01_commonpeak_mm10/{sample}_common_peaks_mm10.bed"
+  output:
+    "05_annotation/mm10/{sample}_annotation.txt"
+  log:
+    "logs/05_annotation/mm10/{sample}_annotation.log"
+  params:
+    genome=GENOME,
+    gtf=GTF
+  threads:10
+  shell:
+    """
+    cat {input[0]} \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - \
+      mm10 \
+      -cpu {threads} \
+      1> {output} 2> {log}
+    """
+
+rule peak_annotation_homer_rep_merge_Curated:
+  input:
+    "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/{sample}_rep1_rep2_common_peaks.bed"
+  output:
+    "05_annotation/Refseq_Curated/{sample}_annotation.txt"
+  log:
+    "logs/05_annotation/{sample}_annotation_Refseq_Curated.log"
+  params:
+    genome=GENOME,
+    gtf=GTF_Refseq_Curated
+  threads:2
+  shell:
+    """
+    cat {input[0]} \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - \
+      {params.genome} \
+      -gtf {params.gtf} \
+      -cpu {threads} \
+      1> {output} 2> {log}
+    """
+
+rule peak_annotation_homer_rep_merge_Refseq_All:
+  input:
+    "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/{sample}_rep1_rep2_common_peaks.bed"
+  output:
+    "05_annotation/Refseq_All/{sample}_annotation.txt"
+  log:
+    "logs/05_annotation/{sample}_annotation_Refseq_All.log"
+  params:
+    genome=GENOME,
+    gtf=GTF_Refseq_All
+  threads:2
+  shell:
+    """
+    cat {input[0]} \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - \
+      {params.genome} \
+      -gtf {params.gtf} \
+      -cpu {threads} \
+      1> {output} 2> {log}
+    """

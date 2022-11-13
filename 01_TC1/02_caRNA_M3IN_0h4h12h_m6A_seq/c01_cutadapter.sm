@@ -1,0 +1,97 @@
+SAMPLE=["M3IN_0h_input_rep1","M3IN_0h_input_rep2","M3IN_4h_input_rep1","M3IN_4h_input_rep2","M3IN_12h_input_rep1","M3IN_12h_input_rep2","M3IN_0h_ip_rep1","M3IN_0h_ip_rep2","M3IN_4h_ip_rep1","M3IN_4h_ip_rep2","M3IN_12h_ip_rep1","M3IN_12h_ip_rep2"]
+
+READ=["1","2"]
+
+TRIM_THREADS = 40
+
+# {sample}_{read} 和 sample=SAMPLE,read=READ 根据需要替换
+rule all:
+  input:
+    "00_raw_fastq/01_fastqc/multiqc_report.html",
+    "01_trim_galore/01_fastqc/multiqc_report.html"
+    
+rule fastqc1:
+  input:
+    "00_raw_fastq/{sample}_{read}.fq.gz"
+  output:
+    "00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.html",
+    "00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.zip"
+  log:
+    "logs/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.log"
+  threads: 1
+  params:
+    out_dir="00_raw_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} 1> {log} 2>&1"
+    
+rule multiqc1:
+  input:
+    expand("00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.html", sample=SAMPLE,read=READ),
+    expand("00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.zip", sample=SAMPLE,read=READ)
+  output:
+    "00_raw_fastq/01_fastqc/multiqc_report.html"
+  log:
+    "logs/00_raw_fastq/01_fastqc/multiqc_report.log"
+  threads: 1
+  params:
+    out_dir="00_raw_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
+
+# 是否需要加别的参数
+# -a/--adalpter 
+# -a2/--adapter2 
+# --concider_already_trimed <INT>
+# --gzip
+# --length
+# --clip_R1
+# --clip_R2
+# --three_prime_clip_R1
+# --three_prime_clip_R2
+rule trim_galore:
+  input:
+    "00_raw_fastq/{sample}_1.fq.gz",
+    "00_raw_fastq/{sample}_2.fq.gz"
+  output:
+    "01_trim_galore/{sample}_1_val_1.fq.gz",
+    "01_trim_galore/{sample}_2_val_2.fq.gz"
+  params:
+    output_dir="01_trim_galore"
+  log:
+    "logs/01_trim_galore/{sample}.log"
+  threads: TRIM_THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/trim-galore/bin/trim_galore \
+      -o {params.output_dir} --gzip \
+      --clip_R2 3 --three_prime_clip_R1 3 \
+      --clip_R1 6 --three_prime_clip_R2 6 \
+      --path_to_cutadapt /disk/user_09/anaconda3/envs/trim-galore/bin/cutadapt \
+      -j {threads} --paired {input} 1> {log} 2>&1"
+      
+rule fastqc2:
+  input:
+    "01_trim_galore/{sample}_{read}_val_{read}.fq.gz"
+  output:
+    "01_trim_galore/01_fastqc/{sample}_{read}_val_{read}_fastqc.html",
+    "01_trim_galore/01_fastqc/{sample}_{read}_val_{read}_fastqc.zip"
+  log:
+    "logs/01_trim_galore/01_fastqc/{sample}_{read}_val_{read}_fastqc.log"
+  threads: 1
+  params:
+    out_dir="01_trim_galore/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule multiqc2:
+  input:
+    expand("01_trim_galore/01_fastqc/{sample}_{read}_val_{read}_fastqc.html",sample=SAMPLE,read=READ),
+    expand("01_trim_galore/01_fastqc/{sample}_{read}_val_{read}_fastqc.zip",sample=SAMPLE,read=READ)
+  output:
+    "01_trim_galore/01_fastqc/multiqc_report.html"
+  log:
+    "logs/01_trim_galore/01_fastqc/multiqc_report.log"
+  threads: 1
+  params:
+    out_dir="01_trim_galore/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
