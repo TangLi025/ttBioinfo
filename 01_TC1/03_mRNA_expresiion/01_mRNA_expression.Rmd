@@ -1,0 +1,183 @@
+---
+title: "01_mRNA_expression"
+author: "Tang Li"
+date: '2022-11-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggbeeswarm)
+library(ggplot2)
+library(ggprism)
+library(reshape2)
+library(stringr)
+library(ttFunctions)
+
+require(knitr)
+opts_knit$set(root.dir = "~/Data/01_TC1/13_TC1_P6_siNUDT21/05_DEG_Nudt21_new/06_marker_expression/")
+
+
+```
+
+```{r}
+
+tpm_matrix_rm <- tpm_matrix[,c(17:24,1:4,7:16,25:30)]
+m6A_genes <- c("METTL3","METTL14","METTL16","WTAP","VIRMA","CBLL1","ZC3H13","RBM15","RBM15B","FTO","ALKBH5","YTHDF1","YTHDF2","YTHDF3","YTHDC1","YTHDC2","HNRNPA2B1","EIF3A","IGF2BP1","IGF2BP2","IGF2BP3","FMR1","HNRNPC","RBMX","ELAVL1","G3BP1","G3BP2","Nudt21","Cpsf6")
+m6A_genes <- str_to_title(m6A_genes)
+
+table(m6A_genes %in% rownames(tpm_matrix_rm))
+
+tpm_m6A <- as.data.frame(tpm_matrix_rm[m6A_genes,])
+
+tpm_m6A_melt <- tpm_m6A
+tpm_m6A_melt$symbol <- rownames(tpm_m6A_melt)
+
+tpm_m6A_melt <- melt(tpm_m6A_melt,id.vars = "symbol",variable.name = "sample",value.name = "tpm")
+
+tpm_m6A_melt$group <- factor(rep(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",
+                     "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),
+                     "TSC_P0","TSC_P1","TSC_P2",
+               "XEN_P0","XEN_P1","XEN_P2"),each=29),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",
+                     "Ctrl","M3IN","siNC","siM3","siVirma",
+                     "TSC_P0","TSC_P1","TSC_P2",
+               "XEN_P0","XEN_P1","XEN_P2"))
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
+
+pdf("01_m6Agenes_exp_level_nobar.pdf")
+
+for (i in rownames(tpm_m6A)){
+  p <- ggplot(tpm_m6A_melt[tpm_m6A_melt$symbol==i,],aes(x=group,y=tpm))+
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+    #geom_point(position = "jitter",)+
+    #stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=expression(tpm))+#标题
+    #scale_fill_manual(values = c())+
+    theme_bar+
+    ggtitle(i)
+  print(p)
+}
+dev.off()
+
+  #scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+  #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+  #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+  #scale_fill_prism(palette = "floral")#使用ggprism包修改颜色
+```
+
+```{r}
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+  theme(plot.title = element_text(size=16,hjust = -0.5))
+  theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(4.5,0.5,4.5,0.5),"cm"))
+  
+pdf("02_Krt18.pdf")
+ggplot(data.frame(Krt18=tpm_matrix_rm["Krt18",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",
+                     "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),
+                     "TSC_P0","TSC_P1","TSC_P2",
+               "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",
+                     "Ctrl","M3IN","siNC","siM3","siVirma",
+                     "TSC_P0","TSC_P1","TSC_P2",
+               "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Krt18))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("02_Cdx2.pdf")
+ggplot(data.frame(Cdx2=tpm_matrix_rm["Cdx2",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Cdx2))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Gata4.pdf")
+ggplot(data.frame(Gata4=tpm_matrix_rm["Gata4",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Gata4))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Gata6.pdf")
+ggplot(data.frame(Gata6=tpm_matrix_rm["Gata6",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Gata6))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Sox17.pdf")
+ggplot(data.frame(Sox17=tpm_matrix_rm["Sox17",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Sox17))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Gapdh.pdf")
+ggplot(data.frame(Gapdh=tpm_matrix_rm["Gapdh",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Gapdh))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Tubb2a.pdf")
+ggplot(data.frame(Tubb2a=tpm_matrix_rm["Tubb2a",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Tubb2a))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Tubb2b.pdf")
+ggplot(data.frame(Tubb2b=tpm_matrix_rm["Tubb2b",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Tubb2b))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Tubb2b.pdf")
+ggplot(data.frame(Tubb2b=tpm_matrix_rm["Tubb2b",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Tubb2b))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_Actb.pdf")
+ggplot(data.frame(Actb=tpm_matrix_rm["Actb",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=Actb))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+pdf("03_H2afz.pdf")
+ggplot(data.frame(H2afz=tpm_matrix_rm["H2afz",],sample=factor(c(rep(c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma"),each=2),                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"),levels = c("p0_total","p5_total","p10_total","rp2_total","p6_siNC","p6_siNudt21_1",                      "Ctrl","M3IN","siNC","siM3","siVirma",                      "TSC_P0","TSC_P1","TSC_P2",                "XEN_P0","XEN_P1","XEN_P2"))),aes(x=sample,y=H2afz))+
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+  theme_bar
+dev.off()
+
+rownames(tpm_matrix_rm)[grep("H2",rownames(tpm_matrix_rm))]
+
+```
+
+
+
+
+
+
+
+
+
+

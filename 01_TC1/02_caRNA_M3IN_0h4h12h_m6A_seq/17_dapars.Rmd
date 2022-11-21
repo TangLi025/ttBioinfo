@@ -1,0 +1,261 @@
+---
+title: "17_dapars"
+author: "Tang Li"
+date: '2022-11-17'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(tidyverse)
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/21_M3IN_ca_12h/08_APA/01_dapars/")
+```
+
+```{bash bam2wig }
+conda activate bedtools
+mkdir /disk/user_09/Data/01_TC1/21_M3IN_ca_12h/08_APA/01_dapars/00_wig
+
+for sample in {M3IN_0h,M3IN_4h,M3IN_12h}
+do
+for rep in {rep1,rep2}
+do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/${sample}_input_${rep}.bam -bga -split -trackline \
+            > /disk/user_09/Data/01_TC1/21_M3IN_ca_12h/08_APA/01_dapars/00_wig/${sample}_input_${rep}.wig &
+done
+done
+
+for sample in {M3IN_0h,M3IN_4h,M3IN_12h}
+do
+for rep in {rep1,rep2}
+do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/22_M3IN_mRNA_12h/03_hisat2_mapping/03_bam_merge/${sample}_${rep}.bam -bga -split -trackline \
+            > /disk/user_09/Data/01_TC1/21_M3IN_ca_12h/08_APA/01_dapars/00_wig/${sample}_mRNA_${rep}.wig &
+done
+done
+```
+
+```{bash dapars2}
+
+for i in `cat configure/chrList.txt`
+do
+python /disk/user_09/software/DaPars2-master/src/Dapars2_Multi_Sample.py \
+    configure/Dapars2_configure.txt  ${i} &
+done
+
+```
+
+```{bash chr2all}
+
+for i in {1..19}
+do
+  sed -i '1d' Dapars2_test_chr${i}/Dapars2_result_temp.chr${i}.txt
+  cat Dapars2_test_chr${i}/Dapars2_result_temp.chr${i}.txt >> \
+    Dapars2_test_chrX/Dapars2_result_temp.chrX.txt
+done
+
+sed -i '1d' Dapars2_test_chrY/Dapars2_result_temp.chrY.txt
+
+cat Dapars2_test_chrY/Dapars2_result_temp.chrY.txt >> \
+  Dapars2_test_chrX/Dapars2_result_temp.chrX.txt
+  
+cp Dapars2_test_chrX/Dapars2_result_temp.chrX.txt \
+  Dapars2_result.txt
+
+rm Dapars2_test_chr* -fr
+
+
+```
+
+```{r dapars group}
+
+dapars2_caRNA_mRNA <- as_tibble(read.table("Dapars2_result.txt",header = TRUE))
+
+colnames(dapars2_caRNA_mRNA) <- c("Gene","fit_value",
+                                  "Predicted_Proximal_APA","Loci",
+                                  "mRNA_M3IN_0h_rep1_PDUI","mRNA_M3IN_0h_rep2_PDUI",
+                                  "mRNA_M3IN_4h_rep1_PDUI","mRNA_M3IN_4h_rep2_PDUI",
+                                  "mRNA_M3IN_12h_rep1_PDUI","mRNA_M3IN_12h_rep2_PDUI",
+                                  "caRNA_M3IN_0h_rep1_PDUI","caRNA_M3IN_0h_rep2_PDUI",
+                                  "caRNA_M3IN_4h_rep1_PDUI","caRNA_M3IN_4h_rep2_PDUI",
+                                  "caRNA_M3IN_12h_rep1_PDUI","caRNA_M3IN_12h_rep2_PDUI")
+
+write.table(dapars2_caRNA_mRNA,"DaPars2_colname_modified.txt",quote = FALSE,sep="\t",row.names = FALSE)
+
+dapars2_mean <- dapars2_caRNA_mRNA
+
+dapars2_mean  <- tibble(Gene=dapars2_mean$Gene,
+                        caRNA_M3IN_0h=apply(dapars2_mean[,c("caRNA_M3IN_0h_rep1_PDUI","caRNA_M3IN_0h_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        caRNA_M3IN_4h=apply(dapars2_mean[,c("caRNA_M3IN_4h_rep1_PDUI","caRNA_M3IN_4h_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        caRNA_M3IN_12h=apply(dapars2_mean[,c("caRNA_M3IN_12h_rep1_PDUI","caRNA_M3IN_12h_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        mRNA_M3IN_0h=apply(dapars2_mean[,c("mRNA_M3IN_0h_rep1_PDUI","mRNA_M3IN_0h_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        mRNA_M3IN_4h=apply(dapars2_mean[,c("mRNA_M3IN_4h_rep1_PDUI","mRNA_M3IN_4h_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        mRNA_M3IN_12h=apply(dapars2_mean[,c("mRNA_M3IN_12h_rep1_PDUI","mRNA_M3IN_12h_rep2_PDUI")],1,mean,na.rm=TRUE)) 
+
+write.table(dapars2_mean,"DaPars2_mean.txt",quote = FALSE,sep="\t",row.names = FALSE)
+
+volcano_color <- c(UP = alpha("#C01623", 0.7),NC = alpha("DimGray", 0.2),DOWN = alpha("#4431A5", 0.7))
+
+dir.create("01_group_table_0.2_0.58")
+## mRNA
+## 
+sample_df <- c(1,5,6,7)
+names(sample_df) <- c("name","M3IN_0h","M3IN_4h","M3IN_12h")
+  
+  
+volcanoPlot_mRNA <- function(stage1,stage2){
+  stage=sample_df[c(stage1,stage2)]
+  dapars <- select(dapars2_mean,c("Gene",all_of(stage)))
+  dapars <- na.omit(dapars)
+  dapars$filter <- "NC"
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,2]/dapars[,3])>0.58)] <- "UP"
+  
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,3]/dapars[,2])>0.58)] <- "DOWN"
+  
+  
+  write.table(dapars,paste0("01_group_table_0.2_0.58/DaPars2_mRNA_",stage1,stage2,".txt"),quote = FALSE,sep="\t",row.names = FALSE)
+  table(dapars$filter)
+  
+  ggplot(dapars)+
+    geom_point(aes(x=get(stage2),y=get(stage1),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR ",stage1,"_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR ",stage2,"_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in mRNA_",stage1)) + 
+    xlab(paste0("Mean PDUIs of genes in mRNA_",stage2))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+  ggsave(paste0("01_group_table_0.2_0.58/dapars_mRNA_",stage1,stage2,"_volcano.pdf"),width = 5.5,height = 6)
+  return(dapars)
+}
+  
+dapars_mRNA_M3IN_0hM3IN_4h <- volcanoPlot_mRNA("M3IN_0h","M3IN_4h")
+dapars_mRNA_M3IN_0hM3IN_12h <- volcanoPlot_mRNA("M3IN_0h","M3IN_12h")
+dapars_mRNA_M3IN_4hM3IN_12h <- volcanoPlot_mRNA("M3IN_4h","M3IN_12h")
+
+  
+## caRNA
+## 
+sample_df <- c(1,2,3,4)
+names(sample_df) <- c("name","M3IN_0h","M3IN_4h","M3IN_12h")
+
+  
+volcanoPlot_caRNA <- function(stage1,stage2){
+  stage=sample_df[c(stage1,stage2)]
+  dapars <- select(dapars2_mean,c("Gene",all_of(stage)))
+  dapars <- na.omit(dapars)
+  dapars$filter <- "NC"
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,2]/dapars[,3])>0.58)] <- "UP"
+  
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,3]/dapars[,2])>0.58)] <- "DOWN"
+  
+  
+  write.table(dapars,paste0("01_group_table_0.2_0.58/DaPars2_caRNA_",stage1,stage2,".txt"),quote = FALSE,sep="\t",row.names = FALSE)
+  table(dapars$filter)
+  
+  ggplot(dapars)+
+    geom_point(aes(x=get(stage2),y=get(stage1),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR ",stage1,"_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR ",stage2,"_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in caRNA_",stage1)) + 
+    xlab(paste0("Mean PDUIs of genes in caRNA_",stage2))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+  ggsave(paste0("01_group_table_0.2_0.58/dapars_caRNA_",stage1,stage2,"_volcano.pdf"),width = 5.5,height = 6)
+  return(dapars)
+}
+
+dapars_caRNA_M3IN_0hM3IN_4h <- volcanoPlot_caRNA("M3IN_0h","M3IN_4h")
+dapars_caRNA_M3IN_0hM3IN_12h <- volcanoPlot_caRNA("M3IN_0h","M3IN_12h")
+dapars_caRNA_M3IN_4hM3IN_12h <- volcanoPlot_caRNA("M3IN_4h","M3IN_12h")
+
+#### caRNA vs mRNA
+#### 
+sample_df <-  list(c(2,5),c(3,6),c(4,7))
+
+names(sample_df) <- c("M3IN_0h","M3IN_4h","M3IN_12h")
+
+volcanoPlot_caRNA_mRNA <- function(stage){
+  dapars <- select(dapars2_mean,c("Gene",sample_df[stage][[1]]))
+  dapars <- na.omit(dapars)
+  dapars$filter <- "NC"
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,2]/dapars[,3])>0.58)] <- "UP"
+  
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,3]/dapars[,2])>0.58)] <- "DOWN"
+  
+  write.table(dapars,paste0("01_group_table_0.2_0.58/DaPars2_caRNA_mRNA_",stage,".txt"),quote = FALSE,sep="\t",row.names = FALSE)
+  table(dapars$filter)
+  
+  ggplot(dapars)+
+    geom_point(aes(x=get(paste0("mRNA_",stage)),y=get(paste0("caRNA_",stage)),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR caRNA_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR mRNA_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in caRNA_",stage)) + 
+    xlab(paste0("Mean PDUIs of genes in mRNA_",stage))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+  ggsave(paste0("01_group_table_0.2_0.58/dapars_caRNA_mRNA",stage,"_volcano.pdf"),width = 5.5,height = 6)
+  return(dapars)
+}
+
+dapars_caRNA_mRNA_M3IN_0h <- volcanoPlot_caRNA_mRNA("M3IN_0h")
+dapars_caRNA_mRNA_M3IN_4h <- volcanoPlot_caRNA_mRNA("M3IN_4h")
+dapars_caRNA_mRNA_M3IN_12h <- volcanoPlot_caRNA_mRNA("M3IN_12h")
+
+
+```
+
+
+
+
+
+
+
+

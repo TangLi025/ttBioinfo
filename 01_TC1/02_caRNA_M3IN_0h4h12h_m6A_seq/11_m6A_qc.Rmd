@@ -18,6 +18,7 @@ library(GenomicFeatures)
 #install.packages('nVennR')
 library(nVennR)
 library(patchwork)
+library(QNB)
 library(reshape2)
 library(rtracklayer)
 library(Rsubread)
@@ -475,6 +476,9 @@ table(M3IN_0hM3IN_4h_cpm_mean_filter$group)
 # M3IN_0h_high M3IN_4h_high           NC 
 #         9706          101         8980
 
+
+tt_wt(M3IN_0hM3IN_4h_cpm_mean_filter,"02_peak_m6A_level/f01_M3IN_0hM3IN_4h_cpm_mean_filter.txt",row.names = T,col.names = T)
+
 ## M3IN_0hM3IN_12h
 M3IN_0hM3IN_12h_peak_fc <- featureCounts(files=bamfiles[c(1:4,9:12)],
                                annot.ext = '/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/05_m6A_peak/05_m6A_qc/01_replication/02_peak_merge_group_saf/M3IN_0h_M3IN_12h_peaks.saf',
@@ -602,11 +606,11 @@ export(gtf_basic_pc_lnc,"~/reference/annotation/mm39/raw/gencode.vM29.basic.anno
 ```
 
 ```{r anno_distribution}
-
+#dir.create("03_annotation")
 # read annotation file from macs2 and homer
-M3IN_0h_anno <- read.delim('../03_bed_merge/05_annotation/M3IN_0h_annotation.txt',header = T)
-M3IN_4h_anno <- read.delim('../03_bed_merge/05_annotation/M3IN_4h_annotation.txt',header = T)
-M3IN_12h_anno <- read.delim('../03_bed_merge/05_annotation/M3IN_12h_annotation.txt',header = T)
+M3IN_0h_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_annotation.txt',header = T)
+M3IN_4h_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_4h_annotation.txt',header = T)
+M3IN_12h_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_12h_annotation.txt',header = T)
 
 # save as list
 df <- list(M3IN_0h = M3IN_0h_anno$Annotation,M3IN_4h = M3IN_4h_anno$Annotation,M3IN_12h = M3IN_12h_anno$Annotation)
@@ -626,8 +630,8 @@ final <- melt(type_comb)
 # factor
 final$name <- factor(final$name,levels = c('M3IN_0h','M3IN_4h','M3IN_12h'))
 
-dir.create("03_annotation")
-pdf("./03_annotation/02_Distribution_of_m6A_peaks.pdf")
+
+pdf("./03_annotation/02_Distribution_of_m6A_peaks_pc_lnc.pdf")
 # draw pie
 ggplot(final,aes(x = '',y = value,fill = variable)) +
   geom_col(position = position_fill()) +
@@ -815,6 +819,181 @@ M3IN_12h_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
 pdf("03_motif_logo/01_motif_logo.pdf",width = 8,height = 9)
 M3IN_0h_motif / M3IN_4h_motif / M3IN_12h_motif
 dev.off()
+
+```
+
+### peak class 
+```{r peak class}
+## 0h 4h 
+M3IN_0h_4h_peak_bed <- read.table("../04_bed_group_merge/M3IN_0h_M3IN_4h.bed")
+
+M3IN_0h_4h_peak_bed_0h_high <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="M3IN_0h_high"],]
+
+M3IN_0h_4h_peak_bed_4h_high <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="M3IN_4h_high"],]
+
+M3IN_0h_4h_peak_bed_nc <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="NC"],]
+
+tt_wt(M3IN_0h_4h_peak_bed_0h_high,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_0h_high.bed")
+tt_wt(M3IN_0h_4h_peak_bed_4h_high,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_4h_high.bed")
+tt_wt(M3IN_0h_4h_peak_bed_nc,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_nc.bed")
+
+## 0h 12h 
+M3IN_0h_12h_peak_bed <- read.table("../04_bed_group_merge/M3IN_0h_M3IN_12h.bed")
+
+M3IN_0h_12h_peak_bed_0h_high <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="M3IN_0h_high"],]
+
+M3IN_0h_12h_peak_bed_12h_high <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="M3IN_12h_high"],]
+
+M3IN_0h_12h_peak_bed_nc <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="NC"],]
+
+tt_wt(M3IN_0h_12h_peak_bed_0h_high,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_0h_high.bed")
+tt_wt(M3IN_0h_12h_peak_bed_12h_high,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_12h_high.bed")
+tt_wt(M3IN_0h_12h_peak_bed_nc,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_nc.bed")
+
+```
+
+```{r anno_class_distribution}
+
+# read annotation file from macs2 and homer
+M3IN_0h_4h_0h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_0h_high_annotation.txt',header = T)
+M3IN_0h_4h_4h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_4h_high_annotation.txt',header = T)
+M3IN_0h_4h_nc_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_nc_annotation.txt',header = T)
+
+# save as list
+df <- list(M3IN_0h_4h_0h_high = M3IN_0h_4h_0h_high_anno$Annotation,
+           M3IN_0h_4h_4h_high = M3IN_0h_4h_4h_high_anno$Annotation,
+           M3IN_0h_4h_nc = M3IN_0h_4h_nc_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('0h_high','4h_high','nc')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('0h_high','4h_high','nc'))
+
+
+pdf("./03_annotation/05_Distribution_of_m6A_peaks_pc_lnc_M3IN_0h_4h_class.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+
+## 12h
+# read annotation file from macs2 and homer
+M3IN_0h_12h_0h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_0h_high_annotation.txt',header = T)
+M3IN_0h_12h_12h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_12h_high_annotation.txt',header = T)
+M3IN_0h_12h_nc_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_nc_annotation.txt',header = T)
+
+# save as list
+df <- list(M3IN_0h_12h_0h_high = M3IN_0h_12h_0h_high_anno$Annotation,
+           M3IN_0h_12h_12h_high = M3IN_0h_12h_12h_high_anno$Annotation,
+           M3IN_0h_12h_nc = M3IN_0h_12h_nc_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('0h_high','12h_high','nc')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('0h_high','12h_high','nc'))
+
+
+pdf("./03_annotation/05_Distribution_of_m6A_peaks_pc_lnc_M3IN_0h_12h_class.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+```{r exon anno GO}
+M3IN_0h_12h_0h_high_anno$annotation <- sapply(strsplit(M3IN_0h_12h_0h_high_anno$Annotation,split = " "),"[",1)
+
+M3IN_0h_12h_0h_high_anno_ETP <- M3IN_0h_12h_0h_high_anno[M3IN_0h_12h_0h_high_anno$annotation %in% c("exon","TTS","promoter-TSS"),]
+
+M3IN_0h_12h_0h_high_ETP_genes <- M3IN_0h_12h_0h_high_anno_ETP$Gene.Name[!duplicated(M3IN_0h_12h_0h_high_anno_ETP$Gene.Name)]
+
+M3IN_0h_12h_0h_high_ETP_pc_genes <- M3IN_0h_12h_0h_high_anno_ETP$Gene.Name[!duplicated(M3IN_0h_12h_0h_high_anno_ETP$Gene.Name) & M3IN_0h_12h_0h_high_anno_ETP$Gene.Type=="protein_coding"]
+
+dir.create("03_annotation/02_M3IN_0h_12h_class")
+tt_wt(M3IN_0h_12h_0h_high_ETP_pc_genes,"03_annotation/02_M3IN_0h_12h_class/M3IN_0h_12h_0h_high_ETP_pc_genes.txt")
+```
+
+```{r}
+length(intersect(M3IN_0h_12h_0h_high_generegion_genes,read.table("~/Data/01_TC1/04_TC1_mRNA/03_TPgene/T_gene2.txt")$V1))
+length(intersect(M3IN_0h_12h_0h_high_generegion_genes,read.table("~/Data/01_TC1/04_TC1_mRNA/03_TPgene/P_gene2.txt")$V1))
+
+
 
 ```
 

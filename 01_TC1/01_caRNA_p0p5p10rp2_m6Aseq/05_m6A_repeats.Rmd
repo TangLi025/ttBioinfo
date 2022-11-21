@@ -1,0 +1,155 @@
+---
+title: "03_repeats"
+author: "Tang Li"
+date: '2022-11-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggprism)
+library(tidyverse)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/03_TC1_caRNA/03_repeats/")
+```
+
+### QNB MERVL
+
+```{r ERVL bed saf modify}
+ERVL_saf <- read.table("~/reference/annotation/mm39/repeats/mm39_repeats_ERVL.saf")
+
+ERVL_saf <- ERVL_saf[order(ERVL_saf$V1),]
+
+name_unique <- as.data.frame(table(ERVL_saf$V1))     ## 筛选出重复项
+
+count = 0
+for (i in 1:dim(name_unique)[1]) {              ## 仅对重复项进行循环，缩短程序运行时间
+  for (j in 1:name_unique[i,2]) {
+    if (ERVL_saf[count+j,1] == name_unique[i,1]) {
+        ERVL_saf[count+j,1] = paste0(name_unique[i,1], "_", j)
+      }
+  }
+  count <- count+name_unique[i,2]
+}
+
+tt_wt(ERVL_saf,"~/reference/annotation/mm39/repeats/mm39_repeats_ERVL_modified.saf")
+```
+
+```{bash featureCounts}
+featureCounts -a /disk/user_09/reference/annotation/mm39/repeats/mm39_repeats_ERVL_modified.saf \
+-o mm39_repeats_ERVL_modified_fc_raw.txt \
+-F SAF -O --fraction --minOverlap 30 -M -s 2 -T 50 -p \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p0_input_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p0_input_rep2.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p10_input_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p10_input_rep2.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/rp2_input_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/rp2_input_rep2.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p0_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p0_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p10_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/p10_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/rp2_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/11_bam_merge/rp2_ip_rep2.bam \
+1> mm39_repeats_ERVL_modified_fc_raw.log 2>&1 &
+
+awk -v OFS='\t' '{print $1,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18}' mm39_repeats_ERVL_modified_fc_raw.txt > mm39_repeats_ERVL_modified_fc_read.txt
+
+```
+
+```{r ERVL}
+repeat_ERVL_modified_counts <- read.table("01_featureCounts/mm39_repeats_ERVL_modified_fc_read.txt",header = T)
+rownames(repeat_ERVL_modified_counts) <- repeat_ERVL_modified_counts$Geneid
+repeat_ERVL_modified_counts <- repeat_ERVL_modified_counts[,2:13]
+sample_name <- paste(rep(c("p0","p10","rp2"),times=2,each=2),
+                     rep(c("input","ip"),each=6),
+                     rep(c("1","2"),times=6),sep='_')
+sample_name
+colnames(repeat_ERVL_modified_counts) <- sample_name
+
+colSums(repeat_ERVL_modified_counts)
+repeat_ERVL_modified_cpm <- as.data.frame(t(t(repeat_ERVL_modified_counts)/total_Reads* 1000000))#参考cpm定义
+colSums(repeat_ERVL_modified_cpm)
+
+table(rowSums(repeat_ERVL_modified_cpm>0.5)>=2)
+
+repeat_ERVL_modified_cpm <- repeat_ERVL_modified_cpm[rowSums(repeat_ERVL_modified_cpm>0.5)>=2,]
+
+repeat_ERVL_modified_cpm_mean <- data.frame(ERVL=rownames(repeat_ERVL_modified_cpm),
+                                     p0_input=apply(repeat_ERVL_modified_cpm[,1:2],1,mean),
+                             p0_ip=apply(repeat_ERVL_modified_cpm[,7:8],1,mean),
+                             p10_input=apply(repeat_ERVL_modified_cpm[,3:4],1,mean),
+                             p10_ip=apply(repeat_ERVL_modified_cpm[,9:10],1,mean),
+                             rp2_input=apply(repeat_ERVL_modified_cpm[,5:6],1,mean),
+                             rp2_ip=apply(repeat_ERVL_modified_cpm[,11:12],1,mean))
+colSums(repeat_ERVL_modified_cpm_mean[2:7])
+### 到底是加1还是0.001还是不加？实用主义。
+repeat_ERVL_modified_cpm_mean$p0_m6A <- log2((repeat_ERVL_modified_cpm_mean$`p0_ip`+0.01)*1/(repeat_ERVL_modified_cpm_mean$`p0_input`+0.01))
+repeat_ERVL_modified_cpm_mean$p10_m6A <- log2((repeat_ERVL_modified_cpm_mean$`p10_ip`+0.01)*1.201745077/(repeat_ERVL_modified_cpm_mean$`p10_input`+0.01))
+repeat_ERVL_modified_cpm_mean$rp2_m6A <- log2((repeat_ERVL_modified_cpm_mean$`rp2_ip`+0.01)*0.925345158/(repeat_ERVL_modified_cpm_mean$`rp2_input`+0.01))
+
+repeat_ERVL_modified_cpm_mean$m6A_p10_p0 <- repeat_ERVL_modified_cpm_mean$p10_m6A-repeat_ERVL_modified_cpm_mean$p0_m6A
+repeat_ERVL_modified_cpm_mean$m6A_p10_rp2 <- repeat_ERVL_modified_cpm_mean$p10_m6A-repeat_ERVL_modified_cpm_mean$rp2_m6A
+
+repeat_ERVL_modified_cpm_mean$exp_p10_p0 <- log2((repeat_ERVL_modified_cpm_mean$p10_input+0.01)/(repeat_ERVL_modified_cpm_mean$p0_input+0.01))
+repeat_ERVL_modified_cpm_mean$exp_p10_rp2 <- log2((repeat_ERVL_modified_cpm_mean$p10_input+0.01)/(repeat_ERVL_modified_cpm_mean$rp2_input+0.01))
+
+tt_wt(repeat_ERVL_modified_cpm_mean,path = "02_m6A_level/repeat_ERVL_modified_cpm_mean_spikein.txt",row.names = F,col.names = T)
+#scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+#scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+
+repeat_MERVL_cpm_mean <- repeat_ERVL_modified_cpm_mean[c(grep("MERVL",rownames(repeat_ERVL_modified_cpm_mean)),
+                                                         grep("MT2_Mm",rownames(repeat_ERVL_modified_cpm_mean))),]
+
+#repeat_MERVL_cpm_mean <- repeat_ERVL_modified_cpm_mean[c(grep("MERVL_2A",rownames(repeat_ERVL_modified_cpm_mean))),]
+
+repeat_ERVL_modified_cpm_mean$is_MERVL <- "other_ERVL"
+repeat_ERVL_modified_cpm_mean$is_MERVL[c(grep("MERVL",rownames(repeat_ERVL_modified_cpm_mean)),
+                                                         grep("MT2_Mm",rownames(repeat_ERVL_modified_cpm_mean)))] <- "MERVL"
+#repeat_ERVL_modified_cpm_mean$is_MERVL[c(grep("MERVL_2A",rownames(repeat_ERVL_modified_cpm_mean)))] <- "MERVL"
+
+table(repeat_ERVL_modified_cpm_mean$is_MERVL)
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+  #theme(plot.title = element_text(size=16,hjust = -0.5))
+    theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(3,0.5,3,0.5),"cm"))
+
+#dir.create("03_m6A_exp_point")
+pdf("03_m6A_exp_point/ERVL.pdf")
+ggplot(repeat_MERVL_cpm_mean)+
+  geom_point(aes(x=m6A_p10_p0,y=exp_p10_p0))+
+  theme_bar
+
+ggplot(repeat_MERVL_cpm_mean)+
+  geom_point(aes(x=m6A_p10_rp2,y=exp_p10_rp2))+
+  theme_bar
+
+ggplot(repeat_ERVL_modified_cpm_mean)+
+  geom_point(aes(x=m6A_p10_p0,y=exp_p10_p0,col=is_MERVL),alpha=0.7)+
+    scale_color_manual(values = c("#DB5C25","#a4a4ba"))+
+  theme_bar
+
+ggplot(repeat_ERVL_modified_cpm_mean)+
+  geom_point(aes(x=m6A_p10_rp2,y=exp_p10_rp2,col=is_MERVL),alpha=0.7)+
+  scale_color_manual(values = c("#DB5C25","#a4a4ba"))+
+  theme_bar
+dev.off()
+
+
+```
+
+
+
+
+
+
+

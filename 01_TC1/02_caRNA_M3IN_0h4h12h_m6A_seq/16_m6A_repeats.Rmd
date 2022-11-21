@@ -1,0 +1,133 @@
+---
+title: "03_repeats"
+author: "Tang Li"
+date: '2022-11-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggprism)
+library(tidyverse)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/06_repeats/")
+```
+
+### QNB MERVL
+
+```{r ERVL bed saf modify}
+ERVL_saf <- read.table("~/reference/annotation/mm39/repeats/mm39_repeats_ERVL.saf")
+
+ERVL_saf <- ERVL_saf[order(ERVL_saf$V1),]
+
+name_unique <- as.data.frame(table(ERVL_saf$V1))     ## 筛选出重复项
+
+count = 0
+for (i in 1:dim(name_unique)[1]) {              ## 仅对重复项进行循环，缩短程序运行时间
+  for (j in 1:name_unique[i,2]) {
+    if (ERVL_saf[count+j,1] == name_unique[i,1]) {
+        ERVL_saf[count+j,1] = paste0(name_unique[i,1], "_", j)
+      }
+  }
+  count <- count+name_unique[i,2]
+}
+
+tt_wt(ERVL_saf,"~/reference/annotation/mm39/repeats/mm39_repeats_ERVL_modified.saf")
+```
+
+```{bash featureCounts}
+featureCounts -a /disk/user_09/reference/annotation/mm39/repeats/mm39_repeats_ERVL_modified.saf \
+-o mm39_repeats_ERVL_modified_fc_raw.txt \
+-F SAF -O --fraction --minOverlap 30 -M -s 2 -T 50 -p \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_input_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_0h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_4h_ip_rep2.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep1.bam \
+/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/M3IN_12h_ip_rep2.bam \
+1> mm39_repeats_ERVL_modified_fc_raw.log 2>&1 &
+
+awk -v OFS='\t' '{print $1,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18}' mm39_repeats_ERVL_modified_fc_raw.txt > mm39_repeats_ERVL_modified_fc_read.txt
+
+```
+
+```{r ERVL}
+repeat_ERVL_modified_counts <- read.table("01_featureCounts/mm39_repeats_ERVL_modified_fc_read.txt",header = T)
+rownames(repeat_ERVL_modified_counts) <- repeat_ERVL_modified_counts$Geneid
+repeat_ERVL_modified_counts <- repeat_ERVL_modified_counts[,2:13]
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),times=2,each=2),
+                     rep(c("input","ip"),each=6),
+                     rep(c("1","2"),times=6),sep='_')
+sample_name
+colnames(repeat_ERVL_modified_counts) <- sample_name
+
+colSums(repeat_ERVL_modified_counts)
+repeat_ERVL_modified_cpm <- as.data.frame(t(t(repeat_ERVL_modified_counts)/total_Reads* 1000000))#参考cpm定义
+colSums(repeat_ERVL_modified_cpm)
+
+table(rowSums(repeat_ERVL_modified_cpm>0.5)>=2)
+
+repeat_ERVL_modified_cpm <- repeat_ERVL_modified_cpm[rowSums(repeat_ERVL_modified_cpm>0.5)>=2,]
+
+repeat_ERVL_modified_cpm_mean <- data.frame(ERVL=rownames(repeat_ERVL_modified_cpm),
+                                     M3IN_0h_input=apply(repeat_ERVL_modified_cpm[,1:2],1,mean),
+                             M3IN_0h_ip=apply(repeat_ERVL_modified_cpm[,7:8],1,mean),
+                             M3IN_4h_input=apply(repeat_ERVL_modified_cpm[,3:4],1,mean),
+                             M3IN_4h_ip=apply(repeat_ERVL_modified_cpm[,9:10],1,mean),
+                             M3IN_12h_input=apply(repeat_ERVL_modified_cpm[,5:6],1,mean),
+                             M3IN_12h_ip=apply(repeat_ERVL_modified_cpm[,11:12],1,mean))
+colSums(repeat_ERVL_modified_cpm_mean[2:7])
+### 到底是加1还是0.001还是不加？实用主义。
+repeat_ERVL_modified_cpm_mean$M3IN_0h_m6A <- log2((repeat_ERVL_modified_cpm_mean$`M3IN_0h_ip`+0.01)*1.663833845/(repeat_ERVL_modified_cpm_mean$`M3IN_0h_input`+0.01))
+repeat_ERVL_modified_cpm_mean$M3IN_4h_m6A <- log2((repeat_ERVL_modified_cpm_mean$`M3IN_4h_ip`+0.01)*1/(repeat_ERVL_modified_cpm_mean$`M3IN_4h_input`+0.01))
+repeat_ERVL_modified_cpm_mean$M3IN_12h_m6A <- log2((repeat_ERVL_modified_cpm_mean$`M3IN_12h_ip`+0.01)*1.129530323/(repeat_ERVL_modified_cpm_mean$`M3IN_12h_input`+0.01))
+
+repeat_ERVL_modified_cpm_mean$m6A_M3IN_4h_M3IN_0h <- repeat_ERVL_modified_cpm_mean$M3IN_4h_m6A-repeat_ERVL_modified_cpm_mean$M3IN_0h_m6A
+repeat_ERVL_modified_cpm_mean$m6A_M3IN_12h_M3IN_0h <- repeat_ERVL_modified_cpm_mean$M3IN_12h_m6A-repeat_ERVL_modified_cpm_mean$M3IN_0h_m6A
+
+repeat_ERVL_modified_cpm_mean$exp_M3IN_4h_M3IN_0h <- log2((repeat_ERVL_modified_cpm_mean$M3IN_4h_input+0.01)/(repeat_ERVL_modified_cpm_mean$M3IN_0h_input+0.01))
+repeat_ERVL_modified_cpm_mean$exp_M3IN_12h_M3IN_0h <- log2((repeat_ERVL_modified_cpm_mean$M3IN_12h_input+0.01)/(repeat_ERVL_modified_cpm_mean$M3IN_0h_input+0.01))
+
+tt_wt(repeat_ERVL_modified_cpm_mean,path = "02_m6A_level/repeat_ERVL_modified_cpm_mean_spikein.txt",row.names = F,col.names = T)
+#scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+#scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+
+repeat_MERVL_cpm_mean <- repeat_ERVL_modified_cpm_mean[grep("MERVL",rownames(repeat_ERVL_modified_cpm_mean)),]
+ggplot(repeat_MERVL_cpm_mean)+
+  geom_point(aes(x=m6A_M3IN_12h_M3IN_0h,y=exp_M3IN_12h_M3IN_0h))
+
+ggplot(repeat_MERVL_cpm_mean)+
+  geom_point(aes(x=m6A_M3IN_4h_M3IN_0h,y=exp_M3IN_4h_M3IN_0h))
+
+ggplot(repeat_ERVL_modified_cpm_mean)+
+  geom_point(aes(x=m6A_M3IN_12h_M3IN_0h,y=exp_M3IN_12h_M3IN_0h))
+
+ggplot(repeat_ERVL_modified_cpm_mean)+
+  geom_point(aes(x=m6A_M3IN_4h_M3IN_0h,y=exp_M3IN_4h_M3IN_0h))
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(4.5,0.5,4.5,0.5),"cm"))
+
+```
+
+
+
+
+
+
+

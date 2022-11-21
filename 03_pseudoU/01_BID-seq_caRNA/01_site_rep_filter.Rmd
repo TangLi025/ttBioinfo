@@ -1,0 +1,724 @@
+---
+title: "r01_site_rep_filter"
+author: "Tang Li"
+date: '2022-10-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require("knitr")
+#opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/")
+library(data.table)
+library(tidyverse)
+library(VennDiagram)
+#install.packages("ggbeeswarm")
+library(ggbeeswarm)
+library(ggprism)
+library(reshape2)
+library(Rsubread)
+library(ttFunctions)
+```
+
+## functions
+
+```{r function load filter files}
+load_filter_files <- function(sample){
+  file_dir <- "./01_BS03_input01"
+  
+  # pos
+  path_pos_1 <- file.path(file_dir,paste0(sample,"_BS_1_pos.txt"))
+  path_pos_2 <- file.path(file_dir,paste0(sample,"_BS_2_pos.txt"))
+  path_pos_3 <- file.path(file_dir,paste0(sample,"_BS_3_pos.txt"))
+
+  BS_1_pos <- read.delim(path_pos_1,header = T)
+  BS_2_pos <- read.delim(path_pos_2,header = T)
+  BS_3_pos <- read.delim(path_pos_3,header = T)
+  
+  rownames(BS_1_pos) <- paste0(BS_1_pos$chrom,"_",BS_1_pos$pos,"_+")
+  rownames(BS_2_pos) <- paste0(BS_2_pos$chrom,"_",BS_2_pos$pos,"_+")
+  rownames(BS_3_pos) <- paste0(BS_3_pos$chrom,"_",BS_3_pos$pos,"_+")
+  
+  BS_site_common_pos <- intersect(intersect(rownames(BS_1_pos),rownames(BS_2_pos)),rownames(BS_3_pos))
+  BS_site_common_pos_info <- data.frame(chr=sapply(strsplit(BS_site_common_pos,split = "_"),"[",1),
+                                        pos=sapply(strsplit(BS_site_common_pos,split = "_"),"[",2),
+                                        strand="+",row.names = BS_site_common_pos)
+  
+  # neg
+  path_neg_1 <- file.path(file_dir,paste0(sample,"_BS_1_neg.txt"))
+  path_neg_2 <- file.path(file_dir,paste0(sample,"_BS_2_neg.txt"))
+  path_neg_3 <- file.path(file_dir,paste0(sample,"_BS_3_neg.txt"))
+  BS_1_neg <- read.delim(path_neg_1,header = T)
+  BS_2_neg <- read.delim(path_neg_2,header = T)
+  BS_3_neg <- read.delim(path_neg_3,header = T)
+  
+  rownames(BS_1_neg) <- paste0(BS_1_neg$chrom,"_",BS_1_neg$pos,"_-")
+  rownames(BS_2_neg) <- paste0(BS_2_neg$chrom,"_",BS_2_neg$pos,"_-")
+  rownames(BS_3_neg) <- paste0(BS_3_neg$chrom,"_",BS_3_neg$pos,"_-")
+  
+  BS_site_common_neg <- intersect(intersect(rownames(BS_1_neg),rownames(BS_2_neg)),rownames(BS_3_neg))
+  BS_site_common_neg_info <- data.frame(chr=sapply(strsplit(BS_site_common_neg,split = "_"),"[",1),
+                                        pos=sapply(strsplit(BS_site_common_neg,split = "_"),"[",2),
+                                        strand="-",row.names = BS_site_common_neg)
+  
+  BS_site_common_info <- rbind(BS_site_common_pos_info,BS_site_common_neg_info)
+  
+  return(BS_site_common_info)
+}
+```
+
+## load filter1 files
+
+```{r load}
+## P12
+
+P12_BS_common <- load_filter_files("P12")
+P16_BS_common <- load_filter_files("P16")
+IC_BS_common <- load_filter_files("IC")
+IR_BS_common <- load_filter_files("IR")
+dir.create("02_BS_common_site")
+
+tt_wt(P12_BS_common,"02_BS_common_site/P12_BS_common.txt")
+tt_wt(P16_BS_common,"02_BS_common_site/P16_BS_common.txt")
+tt_wt(IC_BS_common,"02_BS_common_site/IC_BS_common.txt")
+tt_wt(IR_BS_common,"02_BS_common_site/IR_BS_common.txt")
+
+sen_BS_common <- rbind(as.matrix(P12_BS_common),as.matrix(P16_BS_common))
+table(duplicated(rownames(sen_BS_common)))
+sen_BS_common <- sen_BS_common[!duplicated(rownames(sen_BS_common)),]
+table(duplicated(rownames(sen_BS_common)))
+
+tt_wt(sen_BS_common,"02_BS_common_site/sen_BS_common.txt")
+tt_wt(rownames(sen_BS_common),"02_BS_common_site/sen_BS_common_rowname.txt")
+
+icr_BS_common <- rbind(as.matrix(IC_BS_common),as.matrix(IR_BS_common))
+table(duplicated(rownames(icr_BS_common)))
+icr_BS_common <- icr_BS_common[!duplicated(rownames(icr_BS_common)),]
+table(duplicated(rownames(icr_BS_common)))
+
+tt_wt(icr_BS_common,"02_BS_common_site/icr_BS_common.txt")
+tt_wt(rownames(icr_BS_common),"02_BS_common_site/icr_BS_common_rowname.txt")
+
+all_BS_common <- rbind(as.matrix(sen_BS_common),as.matrix(icr_BS_common))
+table(duplicated(rownames(all_BS_common)))
+all_BS_common <- all_BS_common[!duplicated(rownames(all_BS_common)),]
+table(duplicated(rownames(all_BS_common)))
+
+tt_wt(all_BS_common,"02_BS_common_site/all_BS_common.txt")
+tt_wt(rownames(all_BS_common),"02_BS_common_site/all_BS_common_rowname.txt")
+
+
+```
+
+
+```{r compare with liu and chang}
+P12_liu <- read.table("~/Data/09_PseudoU/01_aging/01_PseudoU_site/P12_sites.txt",header = T)
+P16_liu <- read.table("~/Data/09_PseudoU/01_aging/01_PseudoU_site/P16_sites.txt",header = T)
+IC_liu <- read.table("../../../01_aging/01_PseudoU_site/IC_sites.txt",header = T)
+IR_liu <- read.table("../../../01_aging/01_PseudoU_site/IR_sites.txt",header = T)
+
+# 未修改。需要添加链信息
+rownames(P12_liu) <- paste0("chr",P12_liu$chrom,"_",P12_liu$pos)
+rownames(P16_liu) <- paste0("chr",P16_liu$chrom,"_",P16_liu$pos)
+rownames(IC_liu) <- paste0("chr",IC_liu$chrom,"_",IC_liu$pos)
+rownames(IR_liu) <- paste0("chr",IR_liu$chrom,"_",IR_liu$pos)
+
+length(intersect(rownames(P12_BS_common),rownames(P12_liu)))
+length(intersect(rownames(P16_BS_common),rownames(P16_liu)))
+length(intersect(rownames(IC_BS_common),rownames(IC_liu)))
+length(intersect(rownames(IR_BS_common),rownames(IR_liu)))
+
+puSite_Chang <- read.delim("~/Data/09_PseudoU/01_aging/human-aging-caRNA_sites.tsv",header = T)
+puSite_Chang <- as.data.frame(puSite_Chang)
+rownames(puSite_Chang) <- paste0("chr",puSite_Chang$chr,"_",puSite_Chang$pos)
+
+length(intersect(rownames(puSite_Chang),rownames(P12_liu)))
+
+length(intersect(rownames(P12_BS_common),rownames(puSite_Chang)))
+
+
+length(intersect(rownames(puSite_Chang),rownames(P16_liu)))
+
+length(intersect(rownames(P16_BS_common),rownames(puSite_Chang)))
+
+```
+
+## get all site info
+
+```{bash get site info in all samples}
+# 整理polyT_merge各个样本的信息并排序
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/05_polyT_merge
+mkdir 01_sorted
+for i in {P12,P16}; 
+do 
+  for j in {input,BS}; 
+  do 
+    for k in {1,2,3}; 
+    do
+      cat ${i}_${j}_${k}_pos.txt ${i}_${j}_${k}_neg.txt \
+      | sed 's/A/-/g' |sed 's/T/+/g' \
+      | awk -v OFS='\t' '{print $1"_"$2"_"$3,$0}' \
+      |sort -k 1b,1 > 01_sorted/${i}_${j}_${k}_sorted.txt & 
+    done; 
+  done; 
+done
+
+# site排序
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter
+
+cd 02_BS_common_site
+cat all_BS_common_rowname.txt |sort -k 1b,1 > all_BS_common_rowname_sort.txt
+cd ../
+
+# 获取每个样本里的所有site信息
+mkdir 03_site_info_all_sample
+for i in {IC,IR,P12,P16}; 
+do 
+  for j in {input,BS}; 
+  do 
+    for k in {1,2,3}; 
+    do 
+      join -a 1 -1 1 -2 1 02_BS_common_site/all_BS_common_rowname_sort.txt \
+        ../05_polyT_merge/01_sorted/${i}_${j}_${k}_sorted.txt > 03_site_info_all_sample/all_site_${i}_${j}_${k}.txt & 
+    done; 
+  done; 
+done
+
+```
+
+```{r combine info in 1 file}
+
+allsite <- fread("03_site_info_all_sample/all_site_IC_BS_1.txt",fill=T)
+
+allsite <- data.frame(chr=allsite$V2,pos=allsite$V3,strand=allsite$V4)
+
+for (i in c("IC","IR","P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      print(paste0("03_site_info_all_sample/all_site_",i,"_",j,"_",k,".txt"))
+      new_group <- fread(paste0("03_site_info_all_sample/all_site_",i,"_",j,"_",k,".txt"),fill=T,sep=" ",header = F)
+      allsite[,paste(i,j,k,"total_count",sep="_")] <- new_group$V5
+      allsite[,paste(i,j,k,"t_count",sep="_")] <- new_group$V6
+      allsite[,paste(i,j,k,"del_count",sep="_")] <- new_group$V7
+      allsite[,paste(i,j,k,"del_ratio",sep="_")] <- new_group$V8
+    }
+  }
+}
+
+for (i in 1:ncol(allsite)){
+  allsite[,i][is.na(allsite[,i])] <- 0
+} 
+
+dir.create("04_site_info_final")
+
+tt_wt(allsite,"04_site_info_final/all_site.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+```
+
+## site motif & fraction
+
+```{bash site motif & calculate fraction}
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final
+mkdir 01_site_motif
+
+sed '1d' all_site.txt |awk -v OFS='\t' '{if ($3=="+") {print $1,$2-3,$2+2,"site_"$1"_"$2,".",$3}}' > 01_site_motif/all_site_2_pos.bed
+sed '1d' all_site.txt |awk -v OFS='\t' '{if ($3=="-") {print $1,$2-3,$2+2,"site_"$1"_"$2,".",$3}}' > 01_site_motif/all_site_2_neg.bed
+
+conda activate m6A
+
+cd 01_site_motif
+seqtk subseq -t ~/reference/genome/hg/GRCh38.p13.genome.fa all_site_2_pos.bed > all_site_2_pos.fa
+seqtk subseq -t ~/reference/genome/hg/GRCh38.p13.genome.fa all_site_2_neg.bed > all_site_2_neg.fa
+
+cat all_site_2_neg.fa |awk '{print $3}' |rev |tr ATCG TAGC > all_site_2_neg.seq
+
+cat all_site_2_neg.fa |awk '{print $1,$2}'|paste - all_site_2_neg.seq > all_site_2_neg.fa2 
+cat all_site_2_pos.fa all_site_2_neg.fa2 > all_site_2.fa
+
+
+
+awk -v OFS='\t' '{print $1,$2+2,$3}' all_site_2.fa |sort -k 3 > all_site_2.motif
+
+sed '1d' ~/Data/09_PseudoU/01_aging/calibration_curves_fitting_args.tsv | sort -k 1 | join -a 1 -1 3 -2 1 all_site_2.motif - > all_site_2.fraction
+```
+
+```{r combine fraction}
+
+# 在setup中设置当前所在路径为"~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/"
+site_motif <- read.delim("01_site_motif/all_site_2.fraction",sep = ' ',header = F)
+colnames(site_motif) <- c("motif","chr","pos","fit_A","fit_B","fit_R")
+
+for (i in 1:ncol(site_motif)){
+  site_motif[,i][is.na(site_motif[,i])] <- 0
+} 
+
+#site_info <- read.table("02_site_info/all_site.txt",header = T)
+site_info <- allsite
+
+site_info <- as.data.frame(merge(site_info,site_motif))
+
+fit_A <- site_info$fit_A
+fit_B <- site_info$fit_B
+fit_R <- site_info$fit_R
+for (i in c("IC","IR","P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      X <- site_info[,paste(i,j,k,"del_ratio",sep="_")]
+      fraction <- (X-fit_B)/(X*fit_A+fit_R-fit_A*fit_R-fit_B)
+      print(paste(i,j,k,"del_ratio",sep="_"))
+      for (r in 1:dim(site_info)[1]){
+        site_info[r,paste(i,j,k,"del_fraction",sep="_")] <- ifelse(X[r]<=fit_B[r],0,ifelse(fraction[r]>1,1,fraction[r])) 
+      }
+    }
+  }
+}
+
+write.table(site_info,"site_info_fraction.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+```
+
+## site anno
+
+```{bash annotatePeaks.pl}
+sed '1d' site_info_fraction.txt |awk -v OFS='\t' '{print $1,$2,$2+1,"site_"$1"_"$2,".",$3}' > site_info_fraction.bed
+cat site_info_fraction.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/annotatePeaks.pl - hg38 -cpu 10 \
+        > site_info_anno_hg38.txt &
+        
+cat 02_site_info_fraction.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/annotatePeaks.pl - \
+      /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa \
+      -gtf /disk/user_09/reference/annotation/hg38/gencode.v40.basic.annotation.pc.gtf \
+      -cpu 20 \
+      1> 03_site_info_anno_pc.txt 2> 03_site_info_anno_pc.log &
+```
+
+```{r combine anno}
+### import site_anno
+site_anno <- read.delim("03_site_info_anno_pc.txt")
+
+colnames(site_anno) <- c("site_name","chr","pos",colnames(site_anno)[4:19])
+
+rownames(site_anno) <- paste0(site_anno$chr,"_",site_anno$pos)
+
+### merge anno into site_info
+site_info <- read.table("02_site_info_fraction.txt",header = T)
+rownames(site_info) <- paste0(site_info$chr,"_",site_info$pos)
+site_anno <- site_anno[rownames(site_info),]
+
+table(site_anno$Gene.Type)
+table(sapply(strsplit(site_anno$Annotation," "),"[",1 ))
+
+site_info_anno <- merge(site_info,site_anno[,c(2,3,8:19)],by=c("chr","pos"))
+
+tt_wt(site_info_anno,"04_site_info_anno_pc_merge.txt",quote = F,sep = '\t',row.names = F,col.names = T)
+
+site_info_anno$anno <- sapply(strsplit(site_info_anno$Annotation," "),"[",1 )
+```
+
+## site filter
+
+```{r site filter for all sample}
+
+#site_info_anno <- read.delim("04_site_info_anno_merge.txt",header = T)
+
+rownames(site_info_anno) <- paste0(site_info_anno$chr,"_",site_info_anno$pos)
+
+site_info_filter <- site_info_anno
+
+t_count_ratio <- (rowSums(site_info_filter[,seq(from=5,to=97,by=4)])+ rowSums(site_info_filter[,seq(from=6,to=98,by=4)]))/(rowSums(site_info_filter[,seq(from=4,to=96,by=4)])+rowSums(site_info_filter[,seq(from=6,to=98,by=4)]))
+hist(t_count_ratio)
+t_count_filter <- t_count_ratio>=0.7
+table(t_count_filter)
+site_info_filter <- site_info_filter[t_count_filter,]
+
+#input_count_filter 5 or 10
+input_count_filter <- rowSums(site_info_filter[,seq(from=4,to=92,by=8)])>=10
+table(input_count_filter)
+site_info_filter <- site_info_filter[input_count_filter,]
+
+input_del_filter <- rowSums(site_info_filter[,seq(from=6,to=94,by=8)])/rowSums(site_info_filter[,seq(from=5,to=92,by=8)])<0.01
+table(input_del_filter)
+length(input_del_filter)
+site_info_filter <- site_info_filter[input_del_filter,]
+```
+
+```{r site filter for 4 group}
+
+#  function "site_filter_group"
+site_filter_group <- function(site_info_filter,group,del_count=3,del_ratio=0.05,del_fraction=0.1){
+  filter_del_ratio <- ((site_info_filter[,paste0(group,"_BS_1_del_ratio")]>=del_ratio) + (site_info_filter[,paste0(group,"_BS_2_del_ratio")]>=del_ratio) + (site_info_filter[,paste0(group,"_BS_3_del_ratio")]>=del_ratio))>=2
+  
+  
+  filter_del_count <- ((site_info_filter[,paste0(group,"_BS_1_del_count")] >=del_count) + (site_info_filter[,paste0(group,"_BS_2_del_count")] >=del_count) + (site_info_filter[,paste0(group,"_BS_3_del_count")] >=del_count))>=2
+
+  site <- site_info_filter[filter_del_ratio &filter_del_count,]
+
+  filter_fraction <- ((site[,paste0(group,"_BS_1_del_fraction")]>=del_fraction) + (site[,paste0(group,"_BS_2_del_fraction")]>=del_fraction) + (site[,paste0(group,"_BS_3_del_fraction")]>=del_fraction)) >=2
+  
+  site_conf <- site[filter_fraction,]
+  return(site_conf)
+}
+
+P12_site_conf <- site_filter_group(site_info_filter,"P12")
+P16_site_conf <- site_filter_group(site_info_filter,"P16")
+IC_site_conf <- site_filter_group(site_info_filter,"IC")
+IR_site_conf <- site_filter_group(site_info_filter,"IR")
+
+sen_site_conf_name <- c(rownames(P12_site_conf),rownames(P16_site_conf))
+sen_site_conf_name <- sen_site_conf_name[!duplicated(sen_site_conf_name)]
+sen_site_conf <- site_info_filter[sen_site_conf_name,c(1:3,52:100,116:139)]
+
+sen_site_conf$P12_mean_frac <- (sen_site_conf$P12_BS_1_del_fraction+sen_site_conf$P12_BS_2_del_fraction+sen_site_conf$P12_BS_3_del_fraction)/3
+sen_site_conf$P16_mean_frac <- (sen_site_conf$P16_BS_1_del_fraction+sen_site_conf$P16_BS_2_del_fraction+sen_site_conf$P16_BS_3_del_fraction)/3
+
+sen_site_conf$diff_frac <- sen_site_conf$P16_mean_frac-sen_site_conf$P12_mean_frac
+                                  
+sen_site_conf$diff_frac_group <- ifelse(sen_site_conf$diff_frac>0.1,"P16_high",ifelse(sen_site_conf$diff_frac< -0.1,"P12_high","NC"))
+table(sen_site_conf$diff_frac_group)
+
+write.table(sen_site_conf,"05_sen_site_conf.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+icr_site_conf_name <- c(rownames(IC_site_conf),rownames(IR_site_conf))
+icr_site_conf_name <- icr_site_conf_name[!duplicated(icr_site_conf_name)]
+icr_site_conf <- site_info_filter[icr_site_conf_name,c(1:51,100,104:115,128:139)]
+
+icr_site_conf$IC_mean_frac <- (icr_site_conf$IC_BS_1_del_fraction+icr_site_conf$IC_BS_2_del_fraction+icr_site_conf$IC_BS_3_del_fraction)/3
+icr_site_conf$IR_mean_frac <- (icr_site_conf$IR_BS_1_del_fraction+icr_site_conf$IR_BS_2_del_fraction+icr_site_conf$IR_BS_3_del_fraction)/3
+
+icr_site_conf$diff_frac <- icr_site_conf$IR_mean_frac-icr_site_conf$IC_mean_frac
+                                  
+icr_site_conf$diff_frac_group <- ifelse(icr_site_conf$diff_frac>0.1,"IR_high",ifelse(icr_site_conf$diff_frac< -0.1,"IC_high","NC"))
+table(icr_site_conf$diff_frac_group)
+
+write.table(icr_site_conf,"05_icr_site_conf.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+```
+
+```{r overlap with tang_PE and chang site}
+
+dir.create("02_venn_diagram")
+venn.diagram(list(P12_conf=rownames(P12_site_conf),P16_conf=rownames(P16_site_conf)),filename = "02_venn_diagram/sen_05_2_01_conf.png",imagetype = "png")
+
+sen_site_conf_chang <- read.delim("~/Data/09_PseudoU/01_aging/04_Chang_202210/P12_P16_site_conf2.txt",header = T)
+rownames(sen_site_conf_chang) <- paste0(sen_site_conf_chang$chr,"_",sen_site_conf_chang$pos)
+venn.diagram(list(T_conf=rownames(sen_site_conf),C_conf=rownames(sen_site_conf_chang)),filename = "02_venn_diagram/sen_T_C_conf.png",imagetype = "png")
+
+sen_site_conf_T_PE <- read.delim("~/Data/09_PseudoU/02_aging/04_hisat2_mapping/01_bam_filter3/08_site_common2/02_site_info/02_sen_conf1/00_site_info/sen_site_conf_anno.txt",header = T)
+rownames(sen_site_conf_T_PE) <- paste0(sen_site_conf_T_PE$chr,"_",sen_site_conf_T_PE$pos)
+venn.diagram(list(T_conf=rownames(sen_site_conf),T_PE_conf=rownames(sen_site_conf_T_PE)),filename = "02_venn_diagram/sen_T_T_PE_conf.png",imagetype = "png")
+
+sen_site_conf_T_SP_name <- c(rownames(sen_site_conf),rownames(sen_site_conf_T_PE))
+sen_site_conf_T_SP_name <- sen_site_conf_T_SP_name[!duplicated(sen_site_conf_T_SP_name)]
+
+table(rownames(site_info_anno) %in% sen_site_conf_T_SP_name)
+sen_site_conf_T_SP <- site_info_anno[rownames(site_info_anno) %in% sen_site_conf_T_SP_name,]
+write.table(sen_site_conf_T_SP,"sen_site_conf_T_SP.txt",col.names = T,quote = F,sep = '\t',row.names = F)
+
+
+
+```
+
+```{bash site_bed}
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final
+mkdir 03_site_bed
+sed '1d' 05_sen_site_conf.txt |awk -v OFS='\t' '{print $1,$2,$2+1,$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf.bed
+
+sed '1d' sen_site_conf.txt |awk -v OFS='\t' '{print $1,$2-3,$2+4,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_flank3.bed
+sed '1d' sen_site_conf.txt |awk -v OFS='\t' '{print $1,$2-10,$2+11,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_flank10.bed
+
+sed '1d' sen_site_conf_input5.txt |awk -v OFS='\t' '{print $1,$2-10,$2+11,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_input5_flank10.bed
+
+sed '1d' sen_site_conf_final.txt |awk -v OFS='\t' '{print $1,$2-10,$2+11,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_final_flank10.bed
+sed '1d' sen_site_conf_T_SP.txt |awk -v OFS='\t' '{print $1,$2-10,$2+11,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_T_SP_flank10.bed
+
+sed '1d' 06_sen_site_conf_pc.txt |awk -v OFS='\t' '{print $1,$2-1000,$2+1000,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_pc_flank1000.bed
+sed '1d' 06_sen_site_conf_nc.txt |awk -v OFS='\t' '{print $1,$2-1000,$2+1000,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_nc_flank1000.bed
+
+sed '1d' 03_site_bed/sen_site_conf_pc_flank1000.bed |awk -v OFS='\t' '{print $4,$1,$2,$3,$6}' > 03_site_bed/sen_site_conf_pc_flank1000.saf
+sed '1d' 03_site_bed/sen_site_conf_nc_flank1000.bed |awk -v OFS='\t' '{print $4,$1,$2,$3,$6}' > 03_site_bed/sen_site_conf_nc_flank1000.saf
+
+sed '1d' 05_sen_site_conf.txt |awk -v OFS='\t' '{print $1,$2-1000,$2+1000,"site_"$1"_"$2,".",$3}' > 03_site_bed/sen_site_conf_flank1000.bed
+sed '1d' 03_site_bed/sen_site_conf_flank1000.bed |awk -v OFS='\t' '{print $4,$1,$2,$3,$6}' > 03_site_bed/sen_site_conf_flank1000.saf
+```
+
+```{bash sen site overlap with chang flank 3}
+conda activate bedtools
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/03_site_bed
+bedtools intersect -a sen_site_conf_flank10.bed -b ~/Data/09_PseudoU/01_aging/04_Chang_202210/01_site_bed/P12_P16_site_conf_Chang2.bed |wc -l
+```
+
+```{r fraction boxplot}
+sen_site_conf_melt <- melt(sen_site_conf[sen_site_conf$Gene.Type=="protein-coding",],value.name = "mean_fraction",variable.names = "sample",id.vars=c("chr","pos"),measure.vars=c("P12_mean_frac","P16_mean_frac"))
+ggplot(sen_site_conf_melt, aes(x = variable, y = mean_fraction,fill=variable)) +
+  #geom_boxplot()+
+  geom_point(aes(col=variable),alpha=0.3,position = position_jitter(seed = 2, width = 0.3)) 
+```
+
+```{r motif frequent}
+###frequent_motif_all
+frequent_motif <- aggregate(sen_site_conf[,c(77,78)],by=list(c(sen_site_conf$motif)),FUN="mean")
+colnames(frequent_motif) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(sen_site_conf$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif <- merge(motif_count,frequent_motif)
+frequent_motif$freq_percent <- frequent_motif$freq/(dim(sen_site_conf)[1])
+
+P16_high_site_conf <- sen_site_conf[sen_site_conf$diff_frac_group=="P16_high",]
+frequent_motif <- aggregate(P16_high_site_conf[,c(77,78)],by=list(c(P16_high_site_conf$motif)),FUN="mean")
+colnames(frequent_motif) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(P16_high_site_conf$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif_P16_high <- merge(motif_count,frequent_motif)
+frequent_motif_P16_high$freq_percent <- frequent_motif_P16_high$freq/(dim(P16_high_site_conf)[1])
+
+
+####
+P16_high_other_site_conf <- sen_site_conf[!sen_site_conf$diff_frac_group=="P16_high",]
+frequent_motif <- aggregate(P16_high_other_site_conf[,c(77,78)],by=list(c(P16_high_other_site_conf$motif)),FUN="mean")
+colnames(frequent_motif) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(P16_high_other_site_conf$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif_P16_high_other <- merge(motif_count,frequent_motif)
+frequent_motif_P16_high_other$freq_percent <- frequent_motif_P16_high_other$freq/(dim(P16_high_other_site_conf)[1])
+
+frequent_motif_compare <- merge(frequent_motif_P16_high_other,frequent_motif_P16_high,by="motif")
+
+
+freq_percent_motif <- frequent_motif_compare[frequent_motif_compare$freq_percent.x>0.01 | frequent_motif_compare$freq_percent.y>0.01, ]
+freq_percent_motif_melt <-   melt(freq_percent_motif,id.vars = c("motif"),measure.vars = c("freq_percent.x","freq_percent.y"))
+ggplot(freq_percent_motif_melt)+
+  geom_col(aes(x=motif,y=value,fill=variable),position ="dodge")
+  
+
+
+library(ggplot2)
+ggplot(frequent_motif)+
+  geom_point(aes(x=freq,y=fraction_P16))+
+  geom_label(data=frequent_motif[(frequent_motif$freq>=20 | frequent_motif$fraction_P16>0.7),],aes(x=freq,y=fraction_P16,label=motif))+
+  theme_classic()+
+  ggtitle("P16_high_site")
+
+ggplot(frequent_motif)+
+  geom_point(aes(x=freq,y=fraction_P12))+
+  geom_label(data=frequent_motif[(frequent_motif$freq>=35 | frequent_motif$fraction_P12>0.7),],aes(x=freq,y=fraction_P12,label=motif))+
+  theme_classic()
+```
+
+```{r guitar metagene}
+
+
+sen_site_pc_bed <- data.frame(chr=sen_site_conf_anno_merge_pc$chr,
+                              start=sen_site_conf_anno_merge_pc$pos,
+                              end=sen_site_conf_anno_merge_pc$pos+1,
+                              name=paste0("site_",seq(1,dim(sen_site_conf_anno_merge_pc)[1])),
+                              score=".",
+                              strand=sen_site_conf_anno_merge_pc$strand)
+write.table(sen_site_pc_bed,"sen_site_pc2.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16h_pc <- sen_site_conf_anno_merge_pc[sen_site_conf_anno_merge_pc$diff_frac_group=="P16_high",]
+sen_P16h_pc_bed <- data.frame(chr=sen_P16h_pc$chr,
+                              start=sen_P16h_pc$pos,
+                              end=sen_P16h_pc$pos+1,
+                              name=paste0("site_",seq(1,dim(sen_P16h_pc)[1])),
+                              score=".",
+                              strand=sen_P16h_pc$strand)
+write.table(sen_P16h_pc_bed,"sen_P16h_pc2.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16nc_pc <- sen_site_conf_anno_merge_pc[!sen_site_conf_anno_merge_pc$diff_frac_group=="P16_high",]
+sen_P16nc_pc_bed <- data.frame(chr=sen_P16nc_pc$chr,
+                              start=sen_P16nc_pc$pos,
+                              end=sen_P16nc_pc$pos+1,
+                              name=paste0("site_",seq(1,dim(sen_P16nc_pc)[1])),
+                              score=".",
+                              strand=sen_P16nc_pc$strand)
+write.table(sen_P16nc_pc_bed,"sen_P16nc_pc2.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+library(Guitar)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+# read bed file
+stBedFiles <- list("sen_site_pc2.bed","sen_P16h_pc2.bed","sen_P16nc_pc2.bed")
+
+# prepare annotation file
+# txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+library("GenomicFeatures")
+gtffile <- file.path("/disk/user_09/reference/annotation/hg38/gencode.v40.annotation.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+# draw
+pdf("./04_metagene_profiles_of_pU_site.pdf")
+GuitarPlot(txTxdb = txdb,
+           stBedFiles = stBedFiles,
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P12_other"),
+           txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+dev.off()
+
+pdf("./04_metagene_profiles_of_pU_site_3.pdf")
+GuitarPlot(txTxdb = txdb,
+           stBedFiles = stBedFiles,
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("tx","mrna","ncrna"),
+           stGroupName = c("sen","P16_high","P12_other"))
+           #txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+dev.off()
+
+gtffile2 <- file.path("/disk/user_08/Data/annotation/hg38/hg38_ucsc_refseq.gtf")    #my own gtf
+txdb2 <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+pdf("./04_metagene_profiles_of_pU_site_ucsc.pdf")
+GuitarPlot(txTxdb = txdb2,
+           stBedFiles = stBedFiles,
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P12_other"),
+           txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+dev.off()
+
+
+
+
+```
+
+```{r gtf basic pc_lnc}
+gtf_basic <- rtracklayer::import("~/reference/annotation/hg38/gencode.v40.basic.annotation.gtf")
+
+table(gtf_basic[gtf_basic$type=="gene",]$gene_type)
+
+gtf_basic_pc_lnc <- gtf_basic[gtf_basic$gene_type %in% c("lncRNA","protein_coding"),]
+
+table(gtf_basic_pc_lnc[gtf_basic_pc_lnc$type=="transcript",]$transcript_type)
+rtracklayer::export(gtf_basic_pc_lnc,"~/reference/annotation/hg38/gencode.v40.basic.annotation.pc_lnc.gtf","gtf")
+
+gtf_basic_pc <- gtf_basic[gtf_basic$gene_type %in% c("protein_coding"),]
+
+rtracklayer::export(gtf_basic_pc,"~/reference/annotation/hg38/gencode.v40.basic.annotation.pc.gtf","gtf")
+
+
+```
+
+```{bash homer anno basic pc lnc}
+mkdir 03_site_bed/01_annotation
+cat /disk/user_09/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/03_site_bed/sen_site_conf.bed \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/LinLong/bin/annotatePeaks.pl - \
+      /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa \
+      -gtf /disk/user_09/reference/annotation/hg38/gencode.v40.basic.annotation.pc_lnc.gtf \
+      -cpu 20 \
+      1> 03_site_bed/01_annotation/sen_site_conf_anno.txt 2> 03_site_bed/01_annotation/sen_site_conf_anno.log
+
+cat /disk/user_09/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/03_site_bed/sen_site_conf.bed \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/LinLong/bin/annotatePeaks.pl - \
+      /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa \
+      -gtf /disk/user_09/reference/annotation/hg38/gencode.v40.basic.annotation.pc.gtf \
+      -cpu 20 \
+      1> 03_site_bed/01_annotation/sen_site_conf_anno_pc.txt 2> 03_site_bed/01_annotation/sen_site_conf_anno_pc.log
+```
+
+```{r new anno basic pc_lnc} 
+sen_anno_basic <- read.delim("03_site_bed/01_annotation/sen_site_conf_anno_basic.txt")
+table(sen_anno_basic$Gene.Type)
+
+table(sapply(strsplit(sen_anno_basic$Annotation,split=" ",fixed=T),"[",1))
+
+table(sapply(strsplit(sen_anno_basic[sen_anno_basic$Gene.Type %in% c("lncRNA","protein_coding"),]$Annotation,split=" ",fixed=T),"[",1))
+
+sen_anno_basic_pc_lnc <- read.delim("03_site_bed/01_annotation/sen_site_conf_anno_basic_pc_lnc.txt")
+table(sen_anno_basic_pc_lnc$Gene.Type)
+
+table(sapply(strsplit(sen_anno_basic_pc_lnc$Annotation,split=" ",fixed=T),"[",1))
+
+sen_anno_basic_pc <- read.delim("03_site_bed/01_annotation/sen_site_conf_anno_pc.txt")
+table(sen_anno_basic_pc$Gene.Type)
+
+table(sapply(strsplit(sen_anno_basic_pc$Annotation,split=" ",fixed=T),"[",1))
+```
+
+```{r gene GO}
+# site in gene region, not in Intergenic region
+sen_site_conf$anno <- sapply(strsplit(sen_site_conf$Annotation,split=" ",fixed=T),"[",1)
+table(sen_site_conf$anno)
+sen_site_conf_gr <- sen_site_conf[!sen_site_conf$anno=="Intergenic",]
+
+tt_wt(sen_site_conf_gr,"06_sen_site_conf_gr.txt",row.names = T,col.names = T)
+tt_wt(sen_site_conf_gr$Gene.Name,"06_sen_site_conf_gr_genename.txt",row.names = F,col.names = F)
+tt_wt(sen_site_conf_gr[sen_site_conf_gr$diff_frac_group=="P16_high",]$Gene.Name,"06_sen_site_conf_gr_P16_high_genename.txt",row.names = F,col.names = F)
+
+tt_wt(sen_site_conf_gr[sen_site_conf_gr$diff_frac_group=="NC",]$Gene.Name,"06_sen_site_conf_gr_NC_genename.txt",row.names = F,col.names = F)
+tt_wt(sen_site_conf_gr[sen_site_conf_gr$diff_frac_group=="P12_high",]$Gene.Name,"06_sen_site_conf_gr_P12_high_genename.txt",row.names = F,col.names = F)
+
+## icr
+icr_site_conf$anno <- sapply(strsplit(icr_site_conf$Annotation,split=" ",fixed=T),"[",1)
+table(icr_site_conf$anno)
+icr_site_conf_gr <- icr_site_conf[!icr_site_conf$anno=="Intergenic",]
+
+tt_wt(icr_site_conf_gr,"06_icr_site_conf_gr.txt",row.names = T,col.names = T)
+tt_wt(icr_site_conf_gr$Gene.Name,"06_icr_site_conf_gr_genename.txt",row.names = F,col.names = F)
+tt_wt(icr_site_conf_gr[icr_site_conf_gr$diff_frac_group=="IR_high",]$Gene.Name,"06_icr_site_conf_gr_IR_high_genename.txt",row.names = F,col.names = F)
+
+tt_wt(icr_site_conf_gr[icr_site_conf_gr$diff_frac_group=="NC",]$Gene.Name,"06_icr_site_conf_gr_NC_genename.txt",row.names = F,col.names = F)
+tt_wt(icr_site_conf_gr[icr_site_conf_gr$diff_frac_group=="IC_high",]$Gene.Name,"06_icr_site_conf_gr_IC_high_genename.txt",row.names = F,col.names = F)
+```
+
+```{r pU strength}
+sen_site_pc <- sen_site_conf_gr
+
+sen_gene_pc <- aggregate(sen_site_pc[,c(seq(54,64,2))],by=list(gene_name=sen_site_pc$Gene.Name),FUN="sum")
+sen_gene_sitenum <- as.data.frame(table(sen_site_pc$Gene.Name))
+sen_gene_sitenum
+colnames(sen_gene_sitenum) <- c("gene_name","site_count")
+sen_gene_pc <- merge(sen_gene_sitenum,sen_gene_pc,by="gene_name")
+
+table(sen_gene_sitenum$site_count)
+
+sen_gene_pc$P12_mean_fraction <- apply(sen_gene_pc[,c(3:5)],1,mean)
+sen_gene_pc$P16_mean_fraction <- apply(sen_gene_pc[,c(6:8)],1,mean)
+
+ggplot(sen_gene_pc)+
+  geom_point(aes(x=log2(P12_mean_fraction+1),y=log(P16_mean_fraction+1)))
+
+sen_gene_pc$diff_minus <- sen_gene_pc$P16_mean_fraction - sen_gene_pc$P12_mean_fraction
+sen_gene_pc$diff_log <- log2((sen_gene_pc$P16_mean_fraction+0.001)/(sen_gene_pc$P12_mean_fraction+0.001))
+
+table(sen_gene_pc$diff_minus>0.2)
+sen_gene_pc$diff_minus_group <- ifelse(sen_gene_pc$diff_minus>0.2,"P16_high",ifelse(sen_gene_pc$diff_minus< -0.2 , "P12_high","NC"))
+table(sen_gene_pc$diff_minus_group)
+
+table(sen_gene_pc$diff_log>0.58)
+sen_gene_pc$diff_log_group <- ifelse(sen_gene_pc$diff_log>0.58,"P16_high",ifelse(sen_gene_pc$diff_log< -0.58 , "P12_high","NC"))
+table(sen_gene_pc$diff_log_group)
+
+dir.create("07_site_gr_gene")
+write.table(sen_gene_pc,"07_site_gr_gene/sen_gene_gr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+write.table(sen_site_pc$Gene.Name,"07_site_gr_gene/sen_gene_gr_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="P16_high","gene_name"],"07_site_gr_gene/sen_gene_gr_minus_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="NC","gene_name"],"07_site_gr_gene/sen_gene_gr_minus_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="P12_high","gene_name"],"07_site_gr_gene/sen_gene_gr_minus_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="P16_high","gene_name"],"07_site_gr_gene/sen_gene_gr_log_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="NC","gene_name"],"07_site_gr_gene/sen_gene_gr_log_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="P12_high","gene_name"],"07_site_gr_gene/sen_gene_gr_log_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+
+
+
+
+

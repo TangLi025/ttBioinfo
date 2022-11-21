@@ -1,0 +1,86 @@
+---
+title: "01_mRNA_expression"
+author: "Tang Li"
+date: '2022-11-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggbeeswarm)
+library(ggplot2)
+library(ggprism)
+library(reshape2)
+library(stringr)
+library(ttFunctions)
+
+require(knitr)
+opts_knit$set(root.dir = "~/Data/02_embryo/08_2018_gao_NCB/01_marker")
+
+```
+
+```{r}
+file_list <- list.files("00_raw_data/")[1:27]
+
+temp <- read.table("00_raw_data/GSM2588668_MIIOocyte.1.fpkm_tracking",header = T)
+fpkm_matrix <- temp[,c(1,4)]
+
+for (i in file_list){
+  fpkm_matrix[,i] <- read.table(file.path("00_raw_data/",i),header = T)[,10]
+}
+
+
+sample <- c("track_id","gene_id",paste(c(rep("MII",2),rep("C2",4),rep("C4",4),rep("C8",3),rep("morula",2),rep("ICM",4),rep("TE",4),rep("E65Epi",2),rep("E65Exe",2)),
+                c("1","2","1","2","3","4","1","2","3","4","1","2","3","1","2","1","2","3","4","1","2","3","4","1","2","1","2"),sep = "_"))
+
+colnames(fpkm_matrix) <- sample
+
+table(rowSums(fpkm_matrix[,3:29]>0.5)>2)
+fpkm_matrix_filter <- fpkm_matrix[rowSums(fpkm_matrix[,3:29]>0.5)>2,]
+table(duplicated(fpkm_matrix_filter$gene_id))
+```
+
+```{r}
+m6A_genes <- c("METTL3","METTL14","METTL16","WTAP","VIRMA","CBLL1","ZC3H13","RBM15","RBM15B","FTO","ALKBH5","YTHDF1","YTHDF2","YTHDF3","YTHDC1","YTHDC2","HNRNPA2B1","EIF3A","IGF2BP1","IGF2BP2","IGF2BP3","FMR1","HNRNPC","RBMX","ELAVL1","G3BP1","G3BP2","Nudt21","Cpsf6")
+m6A_genes <- str_to_title(m6A_genes)
+
+table(m6A_genes %in% fpkm_matrix_filter$gene_id)
+
+m6A_genes[!m6A_genes %in% fpkm_matrix_filter$gene_id]
+
+
+fpkm_m6A <- fpkm_matrix_filter[fpkm_matrix_filter$gene_id %in% m6A_genes,]
+
+fpkm_m6A_melt <- fpkm_m6A
+
+fpkm_m6A_melt <- melt(fpkm_m6A_melt,id.vars = c("track_id","gene_id"),variable.name = "sample",value.name = "fpkm")
+
+fpkm_m6A_melt$group <- factor(rep(c(rep("MII",2),rep("C2",4),rep("C4",4),rep("C8",3),rep("morula",2),rep("ICM",4),rep("TE",4),rep("E65Epi",2),rep("E65Exe",2)),each=41),
+                                levels = c("MII","C2","C4","C8","morula","ICM","TE","E65Epi","E65Exe"))
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
+
+pdf("01_m6Agenes_exp_level_nobar.pdf")
+
+for (i in fpkm_m6A$track_id){
+  p <- ggplot(fpkm_m6A_melt[fpkm_m6A_melt$track_id==i,],aes(x=group,y=fpkm))+
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+    #geom_point(position = "jitter",)+
+    #stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=expression(fpkm))+#标题
+    #scale_fill_manual(values = c())+
+    theme_bar+
+    ggtitle(fpkm_m6A[fpkm_m6A$track_id==i,"gene_id"])
+  print(p)
+}
+dev.off()
+```
+

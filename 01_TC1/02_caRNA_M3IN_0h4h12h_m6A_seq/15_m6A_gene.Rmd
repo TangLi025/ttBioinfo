@@ -1,0 +1,515 @@
+---
+title: "15_m6A_gene"
+author: "Tang Li"
+date: '2022-11-16'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ChIPpeakAnno)
+library(ggplot2)
+library(ggpubr)
+#devtools::install_github("ricardo-bion/ggradar")
+library(ggradar)
+library(ggrepel)
+require(ggseqlogo)
+library(Guitar)
+library(GenomicFeatures)
+#install.packages('nVennR')
+library(nVennR)
+library(patchwork)
+library(QNB)
+library(reshape2)
+library(rtracklayer)
+library(Rsubread)
+library(tidyverse)
+#install.packages("Vennerable", repos="http://R-Forge.R-project.org")
+library(Vennerable)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/21_M3IN_ca_12h/07_m6A_gene/")
+```
+
+### QNB ca-mRNA
+
+```{r gene featureCounts cpm}
+bam_dir <- "/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/"
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_num_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(1,2,7,8,3,4,9,10,5,6,11,12)]
+
+## M3IN_0h
+M3IN_gene_fc <- featureCounts(files=bamfiles,
+                               annot.ext = '~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf',
+                               isGTFAnnotationFile = T,
+                               GTF.featureType = "gene",
+                               GTF.attrType.extra = c("gene_name"),
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_gene_counts <- M3IN_gene_fc$counts
+colnames(M3IN_gene_counts) <- sample_name
+
+tt_wt(M3IN_gene_counts,"M3IN_gene_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_gene_counts)
+
+M3IN_gene_cpm <- as.data.frame(t(t(M3IN_gene_counts)/total_Reads * 1000000))#参考cpm定义
+colSums(M3IN_gene_cpm)
+
+table(rowSums(M3IN_gene_cpm>0.5)>=2)
+# FALSE  TRUE 
+# 10611 21171
+M3IN_gene_cpm <- M3IN_gene_cpm[rowSums(M3IN_gene_cpm>0.5)>=2,]
+
+table(rowSums(M3IN_gene_counts>10)>=2)
+# FALSE  TRUE 
+#  9055 22727
+M3IN_gene_counts_filter <- M3IN_gene_counts[rowSums(M3IN_gene_counts>10)>=2,]
+
+```
+
+```{r QNB}
+#dir.create("01_QNB_output")
+
+M3IN_0h_ip_gene_counts = M3IN_gene_counts[,3:4]
+M3IN_0h_input_gene_counts = M3IN_gene_counts[,1:2]
+M3IN_4h_ip_gene_counts = M3IN_gene_counts[,7:8]
+M3IN_4h_input_gene_counts = M3IN_gene_counts[,5:6]
+M3IN_12h_ip_gene_counts = M3IN_gene_counts[,11:12]
+M3IN_12h_input_gene_counts = M3IN_gene_counts[,9:10]
+
+head(M3IN_0h_ip_gene_counts)
+
+# When size.factor is not NA
+total_number_reads_0h_ip <- c(74606690,65858934)
+total_number_reads_4h_ip <- c(63084688,75080218)
+total_number_reads_12h_ip <- c(63731668,62110020)
+total_number_reads_0h_input <- c(65411554,59680388)
+total_number_reads_4h_input <- c(55155274,55244282)
+total_number_reads_12h_input <- c(55453230,61066238)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_0h_ip,
+                                  total_number_reads_4h_ip,
+                                  total_number_reads_12h_ip,
+                                  total_number_reads_0h_input,
+                                  total_number_reads_4h_input,
+                                  total_number_reads_12h_input))))
+
+nf_spikein <- c(0.697398363,0.752975137,1.255850546,1.157329973,1.074906923,1.061539057)
+```
+
+```{r M3IN 0h 4h}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_4h_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_4h_input/standard_library_size)
+
+dir.create("01_QNB_output_gene/M3IN_0h_4h")
+result_0h_4h = qnbtest(M3IN_0h_ip_gene_counts, M3IN_4h_ip_gene_counts, M3IN_0h_input_gene_counts, M3IN_4h_input_gene_counts, mode="per-condition",output.dir = "01_QNB_output_gene/M3IN_0h_4h",size.factor = size.factor.spikein)
+tt_wt(result_0h_4h,"01_QNB_output_gene/result_0h_4h.txt",row.names = T,col.names = T)
+
+result_0h_4h_sig <- result_0h_4h[result_0h_4h$padj<0.05,]
+table(result_0h_4h_sig$log2.RR<0)
+# FALSE  TRUE 
+#   619  1915
+
+```
+
+```{r M3IN 0h 12h}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_12h_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_12h_input/standard_library_size)
+
+dir.create("01_QNB_output_gene/M3IN_0h_12h")
+result_0h_12h = qnbtest(M3IN_0h_ip_gene_counts, M3IN_12h_ip_gene_counts, M3IN_0h_input_gene_counts, M3IN_12h_input_gene_counts, mode="per-condition",output.dir = "01_QNB_output_gene/M3IN_0h_12h",size.factor = size.factor.spikein)
+
+tt_wt(result_0h_12h,"01_QNB_output_gene/result_0h_12h.txt",row.names = T,col.names = T)
+result_0h_12h_sig <- as.data.frame(result_0h_12h[result_0h_12h$padj<0.05,])
+table(result_sig$log2.RR<0)
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR>0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR>0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR<0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR<0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR>0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR<0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR<0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR>0]))
+
+```
+
+### ca-mRNA exon
+```{r gene featureCounts cpm}
+bam_dir <- "/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/"
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_num_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(1,2,7,8,3,4,9,10,5,6,11,12)]
+
+M3IN_exon_fc <- featureCounts(files=bamfiles,
+                               annot.ext = '~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf',
+                               isGTFAnnotationFile = T,
+                               GTF.featureType = "exon",
+                               GTF.attrType.extra = c("gene_name"),
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_exon_counts <- M3IN_exon_fc$counts
+colnames(M3IN_exon_counts) <- sample_name
+
+colSums(M3IN_exon_counts)
+
+M3IN_exon_cpm <- as.data.frame(t(t(M3IN_exon_counts)/total_Reads * 1000000))#参考cpm定义
+colSums(M3IN_exon_cpm)
+
+table(rowSums(M3IN_exon_cpm>0.5)>=2)
+# FALSE  TRUE 
+# 14863 16919
+#M3IN_exon_cpm <- M3IN_exon_cpm[rowSums(M3IN_exon_cpm>0.5)>=2,]
+
+table(rowSums(M3IN_exon_counts>10)>=2)
+# FALSE  TRUE 
+# 13467 18315
+M3IN_exon_counts_filter <- M3IN_exon_counts[rowSums(M3IN_exon_counts>10)>=2,]
+
+```
+
+```{r QNB}
+#dir.create("01_QNB_output")
+
+M3IN_0h_ip_exon_counts = M3IN_exon_counts_filter[,3:4]
+M3IN_0h_input_exon_counts = M3IN_exon_counts_filter[,1:2]
+M3IN_4h_ip_exon_counts = M3IN_exon_counts_filter[,7:8]
+M3IN_4h_input_exon_counts = M3IN_exon_counts_filter[,5:6]
+M3IN_12h_ip_exon_counts = M3IN_exon_counts_filter[,11:12]
+M3IN_12h_input_exon_counts = M3IN_exon_counts_filter[,9:10]
+
+head(M3IN_0h_ip_exon_counts)
+
+# When size.factor is not NA
+total_number_reads_0h_ip <- c(74606690,65858934)
+total_number_reads_4h_ip <- c(63084688,75080218)
+total_number_reads_12h_ip <- c(63731668,62110020)
+total_number_reads_0h_input <- c(65411554,59680388)
+total_number_reads_4h_input <- c(55155274,55244282)
+total_number_reads_12h_input <- c(55453230,61066238)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_0h_ip,
+                                  total_number_reads_4h_ip,
+                                  total_number_reads_12h_ip,
+                                  total_number_reads_0h_input,
+                                  total_number_reads_4h_input,
+                                  total_number_reads_12h_input))))
+
+nf_spikein <- c(0.697398363,0.752975137,1.255850546,1.157329973,1.074906923,1.061539057)
+```
+
+```{r M3IN 0h 4h}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_4h_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_4h_input/standard_library_size)
+dir.create("02_QNB_output_exon/")
+dir.create("02_QNB_output_exon/M3IN_0h_4h")
+result_0h_4h = qnbtest(M3IN_0h_ip_exon_counts, M3IN_4h_ip_exon_counts, M3IN_0h_input_exon_counts, M3IN_4h_input_exon_counts, mode="per-condition",output.dir = "02_QNB_output_exon/M3IN_0h_4h",size.factor = size.factor.spikein)
+
+tt_wt(result_0h_4h,"02_QNB_output_exon/result_0h_4h.txt",row.names = T,col.names = T)
+
+result_0h_4h_sig <- result_0h_4h[result_0h_4h$padj<0.05,]
+table(result_0h_4h_sig$log2.RR<0)
+
+```
+
+```{r M3IN 0h 12h}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_12h_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_12h_input/standard_library_size)
+
+dir.create("02_QNB_output_exon//M3IN_0h_12h")
+result_0h_12h = qnbtest(M3IN_0h_ip_exon_counts, M3IN_12h_ip_exon_counts, M3IN_0h_input_exon_counts, M3IN_12h_input_exon_counts, mode="per-condition",output.dir = "02_QNB_output_exon/M3IN_0h_12h",size.factor = size.factor.spikein)
+
+tt_wt(result_0h_12h,"02_QNB_output_exon/result_0h_12h.txt",row.names = T,col.names = T)
+result_0h_12h_sig <- as.data.frame(result_0h_12h[result_0h_12h$padj<0.05,])
+table(result_sig$log2.RR<0)
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR>0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR>0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR<0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR<0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR>0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR<0]))
+
+length(intersect(rownames(result_0h_4h_sig)[result_0h_4h_sig$log2.RR<0],
+                 rownames(result_0h_12h_sig)[result_0h_12h_sig$log2.RR>0]))
+
+```
+
+### M3IN vs p0p10rp2
+```{r read table}
+QNB_p10_p0_exon <- read.table("~/Data/01_TC1/03_TC1_caRNA/04_m6A_gene/02_QNB_output_exon/p10_p0/result_p10_p0.txt",header = T,row.names = 1)
+QNB_p10_rp2_exon <- read.table("~/Data/01_TC1/03_TC1_caRNA/04_m6A_gene/02_QNB_output_exon/p10_rp2/result_p10_rp2.txt",header = T,row.names = 1)
+
+QNB_h0_h4_exon <- read.table("~/Data/01_TC1/21_M3IN_ca_12h/07_m6A_gene/02_QNB_output_exon/result_0h_4h.txt",header = T,row.names = 1)
+QNB_h0_h12_exon <- read.table("~/Data/01_TC1/21_M3IN_ca_12h/07_m6A_gene/02_QNB_output_exon/result_0h_12h.txt",header = T,row.names = 1)
+```
+
+```{r gene overlap}
+# QNB_p10_p0_exon_p10h <- QNB_p10_p0_exon[QNB_p10_p0_exon$log2.RR< -0.58 & QNB_p10_p0_exon$padj<0.05,]
+# QNB_p10_p0_exon_p0h <- QNB_p10_p0_exon[QNB_p10_p0_exon$log2.RR>0.58 & QNB_p10_p0_exon$padj<0.05,]
+# 
+# QNB_p10_rp2_exon_p10h <- QNB_p10_rp2_exon[QNB_p10_rp2_exon$log2.RR< -0.58 & QNB_p10_rp2_exon$padj<0.05,]
+# QNB_p10_rp2_exon_rp2h <- QNB_p10_rp2_exon[QNB_p10_rp2_exon$log2.RR>0.58 & QNB_p10_rp2_exon$padj<0.05,]
+# 
+# QNB_h0_h4_exon_h0h <- QNB_h0_h4_exon[QNB_h0_h4_exon$log2.RR< -0.58 & QNB_h0_h4_exon$padj<0.05,]
+# QNB_h0_h4_exon_h4h <- QNB_h0_h4_exon[QNB_h0_h4_exon$log2.RR>0.58 & QNB_h0_h4_exon$padj<0.05,]
+# 
+# QNB_h0_h12_exon_h0h <- QNB_h0_h12_exon[QNB_h0_h12_exon$log2.RR< -0.58 & QNB_h0_h12_exon$padj<0.05,]
+# QNB_h0_h12_exon_h12h <- QNB_h0_h12_exon[QNB_h0_h12_exon$log2.RR>0.58 & QNB_h0_h12_exon$padj<0.05,]
+
+QNB_p10_p0_exon_sig <- QNB_p10_p0_exon[!is.na(QNB_p10_p0_exon$padj),]
+QNB_p10_p0_exon_sig <- QNB_p10_p0_exon_sig[QNB_p10_p0_exon_sig$padj<0.05,]
+QNB_p10_p0_exon_p10h <- QNB_p10_p0_exon_sig[QNB_p10_p0_exon_sig$log2.RR< -0.2,]
+QNB_p10_p0_exon_p0h <- QNB_p10_p0_exon_sig[QNB_p10_p0_exon_sig$log2.RR>0.2,]
+
+QNB_p10_rp2_exon_sig <- QNB_p10_rp2_exon[!is.na(QNB_p10_rp2_exon$padj),]
+QNB_p10_rp2_exon_sig <- QNB_p10_rp2_exon_sig[QNB_p10_rp2_exon_sig$padj<0.05,]
+QNB_p10_rp2_exon_p10h <- QNB_p10_rp2_exon_sig[QNB_p10_rp2_exon_sig$log2.RR< -0.2,]
+QNB_p10_rp2_exon_rp2h <- QNB_p10_rp2_exon_sig[QNB_p10_rp2_exon_sig$log2.RR>0.2,]
+
+QNB_h0_h4_exon_sig <- QNB_h0_h4_exon[!is.na(QNB_h0_h4_exon$padj),]
+QNB_h0_h4_exon_sig <- QNB_h0_h4_exon_sig[QNB_h0_h4_exon_sig$padj<0.05,]
+QNB_h0_h4_exon_h0h <- QNB_h0_h4_exon_sig[QNB_h0_h4_exon_sig$log2.RR< -0.2,]
+QNB_h0_h4_exon_h4h <- QNB_h0_h4_exon_sig[QNB_h0_h4_exon_sig$log2.RR>0.2,]
+
+QNB_h0_h12_exon_sig <- QNB_h0_h12_exon[!is.na(QNB_h0_h12_exon$padj),]
+QNB_h0_h12_exon_sig <- QNB_h0_h12_exon_sig[QNB_h0_h12_exon_sig$padj<0.05,]
+QNB_h0_h12_exon_h0h <- QNB_h0_h12_exon_sig[QNB_h0_h12_exon_sig$log2.RR< -0.2,]
+QNB_h0_h12_exon_h12h <- QNB_h0_h12_exon_sig[QNB_h0_h12_exon_sig$log2.RR>0.2,]
+
+length(intersect(rownames(QNB_p10_p0_exon_p10h),rownames(QNB_h0_h12_exon_h0h)))
+length(intersect(rownames(QNB_p10_p0_exon_p10h),rownames(QNB_h0_h4_exon_h0h)))
+
+tt_wt(sapply(strsplit(intersect(rownames(QNB_p10_p0_exon_p10h),rownames(QNB_h0_h12_exon_h0h)),split=".",fixed=T),"[",1),"02_QNB_output_exon/p10h_h0h_genes.txt")
+
+tt_wt(sapply(strsplit(intersect(rownames(QNB_p10_p0_exon_p10h),rownames(QNB_h0_h4_exon_h0h)),split=".",fixed=T),"[",1),"02_QNB_output_exon/p10h_h4_h0h_genes.txt")
+
+tt_wt(sapply(strsplit(intersect(rownames(QNB_p10_p0_exon),rownames(QNB_h0_h12_exon)),split=".",fixed=T),"[",1),"02_QNB_output_exon/exp_genes.txt")
+```
+
+```{r}
+## QNB_p10_p0_exon
+
+QNB_p10_p0_exon_sig <- QNB_p10_p0_exon[!is.na(QNB_p10_p0_exon$padj),]
+
+QNB_p10_p0_exon_sig$change <- ifelse(QNB_p10_p0_exon_sig$padj>0.05,"nc",
+                                     ifelse(QNB_p10_p0_exon_sig$log2.RR< -0.58,"p10_high",
+                                            ifelse(QNB_p10_p0_exon_sig$log2.RR>0.58,"p0_high","nc")))
+
+
+volcano_color <- c(p10_high = alpha("#CC0000", 0.7),p0_high = alpha("#2f5688", 0.7),nc=alpha("#BBBBBB", 0.7))
+
+ggplot(QNB_p10_p0_exon_sig)+
+    geom_point(mapping=aes(x=log2.RR,y=-log10(padj),col=change),size=1,alpha=0.7)+
+    #geom_text_repel(aes(x=log2.RR,y=-log10(padj),col=change),show.legend = F,position = position_nudge())+
+    scale_color_manual(values = volcano_color,
+                       breaks=c("p10_high", "p0_high","NC"),
+                       labels=c(paste0("p10_high (", nrow(QNB_p10_p0_exon_sig[QNB_p10_p0_exon_sig$change == "p10_high",]), ")"),
+                                paste0("p0_high (",nrow(QNB_p10_p0_exon_sig[QNB_p10_p0_exon_sig$change == "p0_high",]),")"),
+                                "nc"))+
+    theme_bw()+
+    ylim(0,20)+
+    labs(x=expression(-Log[2]~FoldChange),y=expression(-Log[10]~padj))+
+    theme(legend.position = "right", #top
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'plain'),# bold
+          legend.direction= "vertical")+ #horizontal,vertical
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))+
+    ggtitle(paste0("ca-mRNA m6A p0 p10"))+
+    theme(plot.title = element_text(hjust=0.5, size = 20,  face = 'bold'))+
+    geom_hline(yintercept = -log10(0.05),linetype="dashed") +
+    geom_vline(xintercept = c(-0.58,0.58),linetype="dashed")
+
+tt_wt(sapply(strsplit(rownames(QNB_p10_p0_exon_sig)[QNB_p10_p0_exon_sig$change=="p10_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_p10_high_genes.txt")
+
+tt_wt(sapply(strsplit(rownames(QNB_p10_p0_exon_sig)[QNB_p10_p0_exon_sig$change=="p0_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_p0_high_genes.txt")
+
+## QNB_p10_rp2_exon
+
+QNB_p10_rp2_exon_sig <- QNB_p10_rp2_exon[!is.na(QNB_p10_rp2_exon$padj),]
+
+QNB_p10_rp2_exon_sig$change <- ifelse(QNB_p10_rp2_exon_sig$padj>0.05,"nc",
+                                     ifelse(QNB_p10_rp2_exon_sig$log2.RR< -0.58,"p10_high",
+                                            ifelse(QNB_p10_rp2_exon_sig$log2.RR>0.58,"rp2_high","nc")))
+
+
+volcano_color <- c(p10_high = alpha("#CC0000", 0.7),rp2_high = alpha("#2f5688", 0.7),nc=alpha("#BBBBBB", 0.7))
+
+ggplot(QNB_p10_rp2_exon_sig)+
+    geom_point(mapping=aes(x=log2.RR,y=-log10(padj),col=change),size=1,alpha=0.7)+
+    #geom_text_repel(aes(x=log2.RR,y=-log10(padj),col=change),show.legend = F,position = position_nudge())+
+    scale_color_manual(values = volcano_color,
+                       breaks=c("p10_high", "rp2_high","NC"),
+                       labels=c(paste0("p10_high (", nrow(QNB_p10_rp2_exon_sig[QNB_p10_rp2_exon_sig$change == "p10_high",]), ")"),
+                                paste0("rp2_high (",nrow(QNB_p10_rp2_exon_sig[QNB_p10_rp2_exon_sig$change == "rp2_high",]),")"),
+                                "nc"))+
+    theme_bw()+
+    ylim(0,20)+
+    labs(x=expression(-Log[2]~FoldChange),y=expression(-Log[10]~padj))+
+    theme(legend.position = "right", #top
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'plain'),# bold
+          legend.direction= "vertical")+ #horizontal,vertical
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))+
+    ggtitle(paste0("ca-mRNA m6A rp2 p10"))+
+    theme(plot.title = element_text(hjust=0.5, size = 20,  face = 'bold'))+
+    geom_hline(yintercept = -log10(0.05),linetype="dashed") +
+    geom_vline(xintercept = c(-0.58,0.58),linetype="dashed")
+
+tt_wt(sapply(strsplit(rownames(QNB_p10_rp2_exon_sig)[QNB_p10_rp2_exon_sig$change=="p10_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_p10_vs_rp2_p10_high_genes.txt")
+
+tt_wt(sapply(strsplit(rownames(QNB_p10_p0_exon_sig)[QNB_p10_p0_exon_sig$change=="p0_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_p0_high_genes.txt")
+```
+
+```{r}
+## QNB_p10_p0_exon
+
+QNB_h0_h4_exon_sig <- QNB_h0_h4_exon[!is.na(QNB_h0_h4_exon$padj),]
+
+QNB_h0_h4_exon_sig$change <- ifelse(QNB_h0_h4_exon_sig$padj>0.05,"nc",
+                                     ifelse(QNB_h0_h4_exon_sig$log2.RR< -0.58,"h0_high",
+                                            ifelse(QNB_h0_h4_exon_sig$log2.RR>0.58,"h4_high","nc")))
+
+
+volcano_color <- c(h0_high = alpha("#CC0000", 0.7),h4_high = alpha("#2f5688", 0.7),nc=alpha("#BBBBBB", 0.7))
+
+ggplot(QNB_h0_h4_exon_sig)+
+    geom_point(mapping=aes(x=log2.RR,y=-log10(padj),col=change),size=1,alpha=0.7)+
+    #geom_text_repel(aes(x=log2.RR,y=-log10(padj),col=change),show.legend = F,position = position_nudge())+
+    scale_color_manual(values = volcano_color,
+                       breaks=c("h0_high", "h4_high","NC"),
+                       labels=c(paste0("h0_high (", nrow(QNB_h0_h4_exon_sig[QNB_h0_h4_exon_sig$change == "h0_high",]), ")"),
+                                paste0("h4_high (",nrow(QNB_h0_h4_exon_sig[QNB_h0_h4_exon_sig$change == "h4_high",]),")"),
+                                "nc"))+
+    theme_bw()+
+    ylim(0,20)+
+    labs(x=expression(-Log[2]~FoldChange),y=expression(-Log[10]~padj))+
+    theme(legend.position = "right", #top
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'plain'),# bold
+          legend.direction= "vertical")+ #horizontal,vertical
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))+
+    ggtitle(paste0("ca-mRNA m6A h4 h0"))+
+    theme(plot.title = element_text(hjust=0.5, size = 20,  face = 'bold'))+
+    geom_hline(yintercept = -log10(0.05),linetype="dashed") +
+    geom_vline(xintercept = c(-0.58,0.58),linetype="dashed")
+
+tt_wt(sapply(strsplit(rownames(QNB_h0_h4_exon_sig)[QNB_h0_h4_exon_sig$change=="h0_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_h0_vs_h4_h0_high_genes.txt")
+
+tt_wt(sapply(strsplit(rownames(QNB_h0_h4_exon_sig)[QNB_h0_h4_exon_sig$change=="h4_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_h0_vs_h4_h4_high_genes.txt")
+
+## QNB_h0_h12_exon
+
+QNB_h0_h12_exon_sig <- QNB_h0_h12_exon[!is.na(QNB_h0_h12_exon$padj),]
+
+QNB_h0_h12_exon_sig$change <- ifelse(QNB_h0_h12_exon_sig$padj>0.05,"nc",
+                                     ifelse(QNB_h0_h12_exon_sig$log2.RR< -0.58,"h0_high",
+                                            ifelse(QNB_h0_h12_exon_sig$log2.RR>0.58,"h12_high","nc")))
+
+
+volcano_color <- c(h0_high = alpha("#CC0000", 0.7),h12_high = alpha("#2f5688", 0.7),nc=alpha("#BBBBBB", 0.7))
+
+ggplot(QNB_h0_h12_exon_sig)+
+    geom_point(mapping=aes(x=log2.RR,y=-log10(padj),col=change),size=1,alpha=0.7)+
+    #geom_text_repel(aes(x=log2.RR,y=-log10(padj),col=change),show.legend = F,position = position_nudge())+
+    scale_color_manual(values = volcano_color,
+                       breaks=c("h0_high", "h12_high","NC"),
+                       labels=c(paste0("h0_high (", nrow(QNB_h0_h12_exon_sig[QNB_h0_h12_exon_sig$change == "h0_high",]), ")"),
+                                paste0("h12_high (",nrow(QNB_h0_h12_exon_sig[QNB_h0_h12_exon_sig$change == "h12_high",]),")"),
+                                "nc"))+
+    theme_bw()+
+    ylim(0,20)+
+    labs(x=expression(-Log[2]~FoldChange),y=expression(-Log[10]~padj))+
+    theme(legend.position = "right", #top
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'plain'),# bold
+          legend.direction= "vertical")+ #horizontal,vertical
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))+
+    ggtitle(paste0("ca-mRNA m6A h12 h0"))+
+    theme(plot.title = element_text(hjust=0.5, size = 20,  face = 'bold'))+
+    geom_hline(yintercept = -log10(0.05),linetype="dashed") +
+    geom_vline(xintercept = c(-0.58,0.58),linetype="dashed")
+
+tt_wt(sapply(strsplit(rownames(QNB_h0_h12_exon_sig)[QNB_h0_h12_exon_sig$change=="h0_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_h0_vs_h12_h0_high_genes.txt")
+
+tt_wt(sapply(strsplit(rownames(QNB_h0_h12_exon_sig)[QNB_h0_h4_exon_sig$change=="h12_high"],split=".",fixed=T),"[",1),"02_QNB_output_exon/01_h12_high_genes.txt")
+```
+

@@ -1,0 +1,189 @@
+---
+title: "02_flank1000"
+author: "Tang Li"
+date: '2022-11-21'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require("knitr")
+#opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/06_flank1000/")
+library(data.table)
+library(tidyverse)
+library(VennDiagram)
+#install.packages("ggbeeswarm")
+library(ggbeeswarm)
+library(ggprism)
+library(ggpubr)
+library(reshape2)
+library(Rsubread)
+library(ttFunctions)
+```
+
+```{r flank100 featureCounts}
+
+#generate bam list
+dir2 <- "~/Data/09_PseudoU/02_aging/04_hisat2_mapping/01_bam_filter3/03_bam_merge/"
+
+sample_name2 <- paste(rep(c("IC","IR","P12","P16"),each=3,times=2),
+                      rep(c("input","BS"),each=12),
+                      rep(c("1","2","3"),times=8),
+                      sep = "_")
+
+
+ERCC_fc2_flank1000 <- featureCounts(files = file.path(dir2,paste0(sample_name2,'.bam')),
+                          annot.ext = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/03_site_bed/sen_site_conf_flank1000.saf",
+                          isGTFAnnotationFile = F,
+                          fracOverlap = 0.2,
+                          strandSpecific = 1,
+                          isPairedEnd=T,
+                          nthreads=50)
+ERCC_fc2_flank1000_count <- ERCC_fc2_flank1000$counts
+colnames(ERCC_fc2_flank1000_count) <- sample_name2
+ERCC_fc2_flank1000_genename <- ERCC_fc2_flank1000$annotation
+
+ERCC_fc2_flank1000_count <- ERCC_fc2_flank1000_count[,c(7:12,19:24)]
+
+write.csv(ERCC_fc2_flank1000_count,file = file.path("express_matrix_caRNA_flank1000_raw.csv")) 
+write.csv(ERCC_fc2_flank1000_genename,file = file.path("annotation_caRNA_flank1000_raw.csv")) 
+
+library_size <- sapply(strsplit(read.table("~/Data/09_PseudoU/02_aging/04_hisat2_mapping/01_bam_filter3/03_bam_merge/flagstat/flagstat_summary.txt")$V1,split=":",fixed=T),"[",2)
+library_size <- as.numeric(library_size[c(13:15,19:21,16:18,22:24)])
+
+ERCC_fc2_flank1000_cpm <- as.data.frame(t(t(ERCC_fc2_flank1000_count)/library_size)*1000000)
+
+colSums(ERCC_fc2_flank1000_cpm)
+
+ERCC_fc2_flank1000_cpm$P12_BS_mean <- apply(ERCC_fc2_flank1000_cpm[,7:9],1,mean)
+ERCC_fc2_flank1000_cpm$P16_BS_mean <- apply(ERCC_fc2_flank1000_cpm[,10:12],1,mean)
+
+ERCC_fc2_flank1000_cpm$lfc <- log2((ERCC_fc2_flank1000_cpm$P16_BS_mean+0.01)/(ERCC_fc2_flank1000_cpm$P12_BS_mean+0.01))
+
+rownames(ERCC_fc2_flank1000_cpm) <- paste0(sapply(strsplit(rownames(ERCC_fc2_flank1000_cpm),split = "_",fixed=T),"[",2),"_",
+                                           sapply(strsplit(rownames(ERCC_fc2_flank1000_cpm),split = "_",fixed=T),"[",3))
+
+ERCC_fc2_flank1000_cpm_filter <- ERCC_fc2_flank1000_cpm[ERCC_fc2_flank1000_cpm$P16_BS_mean>0.5 | ERCC_fc2_flank1000_cpm$P12_BS_mean>0.5,]
+
+rownames(sen_site_conf)
+
+table(rownames(ERCC_fc2_flank1000_cpm) %in% rownames(sen_site_conf))
+table(rownames(sen_site_conf) %in% rownames(ERCC_fc2_flank1000_cpm))
+
+sen_site_conf_filter <- sen_site_conf[rownames(ERCC_fc2_flank1000_cpm_filter),]
+
+ERCC_fc2_flank1000_cpm_filter_merge <- cbind(ERCC_fc2_flank1000_cpm_filter,sen_site_conf_filter)
+
+ERCC_fc2_flank1000_cpm_filter_merge$anno <- sapply(strsplit(ERCC_fc2_flank1000_cpm_filter_merge$Annotation,split=" ",fixed=T),"[",1)
+ERCC_fc2_flank1000_cpm_filter_merge$diff_frac_group <- factor(ERCC_fc2_flank1000_cpm_filter_merge$diff_frac_group,levels = c("P12_high","NC","P16_high"))
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+  #theme(plot.title = element_text(size=16,hjust = -0.5))
+    theme(plot.title = element_text(size=16,hjust = -0.5),plot.margin = unit(c(1,0.5,1,0.5),"cm"))
+
+pdf("p01_flank1000_exp_region.pdf")
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="exon",],aes(x=diff_frac,y=lfc))+
+  geom_point(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="intron",],aes(x=diff_frac,y=lfc))+
+  geom_point(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="TTS",],aes(x=diff_frac,y=lfc))+
+  geom_point(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="promoter-TSS",],aes(x=diff_frac,y=lfc))+
+  geom_point(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="Intergenic",],aes(x=diff_frac,y=lfc))+
+  geom_point(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+dev.off()
+
+pdf("p01_flank1000_exp_region_boxplot.pdf")
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge,aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(aes(col=anno),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge,aes(x=anno,y=lfc))+
+  geom_boxplot(aes(col=diff_frac_group),alpha=0.5)+
+  geom_smooth(method="lm")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="exon",],aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(alpha=0.5)+
+  geom_smooth(method="lm")+
+  stat_compare_means(comparisons = list(c("P12_high","P16_high")),
+                       label = "p.signif",
+                       method = "wilcox.test")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="intron",],aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(alpha=0.5)+
+  geom_smooth(method="lm")+
+  stat_compare_means(comparisons = list(c("P12_high","P16_high")),
+                       label = "p.signif",
+                       method = "wilcox.test")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="TTS",],aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(alpha=0.5)+
+  geom_smooth(method="lm")+
+  stat_compare_means(comparisons = list(c("P12_high","P16_high")),
+                       label = "p.signif",
+                       method = "wilcox.test")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="promoter-TSS",],aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(alpha=0.5)+
+  geom_smooth(method="lm")+
+  stat_compare_means(comparisons = list(c("P12_high","P16_high")),
+                       label = "p.signif",
+                       method = "wilcox.test")+
+  theme_bar
+
+ggplot(ERCC_fc2_flank1000_cpm_filter_merge[ERCC_fc2_flank1000_cpm_filter_merge$anno=="Intergenic",],aes(x=diff_frac_group,y=lfc))+
+  geom_boxplot(alpha=0.5)+
+  geom_smooth(method="lm")+
+  stat_compare_means(comparisons = list(c("P12_high","P16_high")),
+                       label = "p.signif",
+                       method = "wilcox.test")+
+  theme_bar
+dev.off()
+
+#设置工作路径
+dir1='~/Data/09_PseudoU/04_aging_mRNA/03_hisat2_mapping/03_bam_merge/'
+sample_name1 <- paste(rep(c("IC","IR","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P12","P16","P13_shCtrl","P13_shDKC1"),each=2),
+                      rep(c("1","2"),times=10),
+                      sep = "_")
+
+fls <- c(file.path(dir1,paste0(sample_name1,'.bam')))
+file.exists(fls)
+
+fc_flank1000 <- tt_featureCounts_gtf(fls = fls,annot.ext = "/disk/user_09/reference/annotation/hg38/gencode.v40.annotation.gtf")
+
+fc_flank1000_count <- as.data.frame(fc_flank1000$counts)
+colnames(fc_flank1000_count) <- sample_name1
+rownames(fc_flank1000_count) <- fc_flank1000$annotation$GeneID
+
+fc_flank1000_annotation <- fc_flank1000$annotation
+# 
+tt_wt(fc_flank1000_count,file.path("express_matrix_raw.txt")) 
+tt_wt(fc_flank1000_annotation,file.path("annotation_raw.txt")) 
+
+```
