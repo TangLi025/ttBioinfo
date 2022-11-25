@@ -997,6 +997,141 @@ length(intersect(M3IN_0h_12h_0h_high_generegion_genes,read.table("~/Data/01_TC1/
 
 ```
 
+### QNB peak
+
+```{r QNB}
+# When size.factor is not NA
+total_number_reads_0h_ip <- c(74606690,65858934)
+total_number_reads_4h_ip <- c(63084688,75080218)
+total_number_reads_12h_ip <- c(63731668,62110020)
+total_number_reads_0h_input <- c(65411554,59680388)
+total_number_reads_4h_input <- c(55155274,55244282)
+total_number_reads_12h_input <- c(55453230,61066238)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_0h_ip,
+                                  total_number_reads_4h_ip,
+                                  total_number_reads_12h_ip,
+                                  total_number_reads_0h_input,
+                                  total_number_reads_4h_input,
+                                  total_number_reads_12h_input))))
+
+nf_spikein <- c(0.697398363,0.752975137,1.255850546,1.157329973,1.074906923,1.061539057)
+```
+
+## M3IN 0h 4h
+```{r gene featureCounts cpm}
+dir.create("05_m6A_peak_QNB")
+bam_dir <- "/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/"
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_num_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(1,2,7,8,3,4,9,10,5,6,11,12)]
+
+## M3IN_0h_4h
+M3IN_0h_4h_fc <- featureCounts(files=bamfiles[1:8],
+                               annot.ext = '/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/05_m6A_peak/04_bed_group_merge/M3IN_0h_M3IN_4h.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_0h_4h_counts <- M3IN_0h_4h_fc$counts[,1:8]
+colnames(M3IN_0h_4h_counts) <- sample_name[1:8]
+
+tt_wt(M3IN_0h_4h_counts,"05_m6A_peak_QNB/M3IN_0h_4h_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_0h_4h_counts)
+
+table(rowSums(M3IN_0h_4h_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_0h_4h_counts_filter <- M3IN_0h_4h_counts[rowSums(M3IN_0h_4h_counts>10)>=2,]
+M3IN_0h_4h_counts_filter <- M3IN_0h_4h_counts
+
+```
+
+```{r M3IN 0h 4h}
+M3IN_0h_ip_0h_4h_counts = M3IN_0h_4h_counts[,3:4]
+M3IN_0h_input_0h_4h_counts = M3IN_0h_4h_counts[,1:2]
+M3IN_4h_ip_0h_4h_counts = M3IN_0h_4h_counts[,7:8]
+M3IN_4h_input_0h_4h_counts = M3IN_0h_4h_counts[,5:6]
+
+head(M3IN_0h_ip_0h_4h_counts)
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_4h_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_4h_input/standard_library_size)
+
+dir.create("05_m6A_peak_QNB/M3IN_0h_4h")
+result_0h_4h = qnbtest(M3IN_0h_ip_0h_4h_counts, M3IN_4h_ip_0h_4h_counts, M3IN_0h_input_0h_4h_counts, M3IN_4h_input_0h_4h_counts, mode="per-condition",output.dir = "05_m6A_peak_QNB/M3IN_0h_4h",size.factor = size.factor.spikein)
+tt_wt(result_0h_4h,"05_m6A_peak_QNB/M3IN_0h_4h/result_0h_4h.txt",row.names = T,col.names = T)
+
+```
+
+## M3IN_0h_12h
+```{r gene featureCounts cpm}
+
+M3IN_0h_12h_fc <- featureCounts(files=bamfiles[c(1:4,9:12)],
+                               annot.ext = '/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/05_m6A_peak/04_bed_group_merge/M3IN_0h_M3IN_12h.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_0h_12h_counts <- M3IN_0h_12h_fc$counts
+colnames(M3IN_0h_12h_counts) <- sample_name[c(1:4,9:12)]
+
+tt_wt(M3IN_0h_12h_counts,"05_m6A_peak_QNB/M3IN_0h_12h_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_0h_12h_counts)
+
+table(rowSums(M3IN_0h_12h_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_0h_12h_counts_filter <- M3IN_0h_12h_counts[rowSums(M3IN_0h_12h_counts>10)>=2,]
+M3IN_0h_12h_counts_filter <- M3IN_0h_12h_counts
+
+```
+
+```{r M3IN 0h 12h}
+
+M3IN_0h_ip_0h_12h_counts = M3IN_0h_12h_counts[,3:4]
+M3IN_0h_input_0h_12h_counts = M3IN_0h_12h_counts[,1:2]
+M3IN_12h_ip_0h_12h_counts = M3IN_0h_12h_counts[,7:8]
+M3IN_12h_input_0h_12h_counts = M3IN_0h_12h_counts[,5:6]
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_12h_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_12h_input/standard_library_size)
+
+dir.create("05_m6A_peak_QNB/M3IN_0h_12h")
+result_0h_12h = qnbtest(M3IN_0h_ip_0h_12h_counts, M3IN_12h_ip_0h_12h_counts, M3IN_0h_input_0h_12h_counts, M3IN_12h_input_0h_12h_counts, mode="per-condition",output.dir = "05_m6A_peak_QNB/M3IN_0h_12h",size.factor = size.factor.spikein)
+
+tt_wt(result_0h_12h,"05_m6A_peak_QNB/M3IN_0h_12h/result_0h_12h.txt",row.names = T,col.names = T)
+
+```
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,42 @@
+SAMPLE=["IC","IR","P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+STRAND=["pos"]
+
+chr_fasta="/disk/user_09/reference/genome/hg/hg38_rRNA_modified.fa"
+chr_bed="/disk/user_09/reference/genome/hg/hg38_rRNA_modified.bed"
+
+# dir: ~/Data/09_PseudoU/06_aging_pU_SE/07_rRNA_modified
+rule all:
+  input:
+    expand("04_bam_readcount/{sample}_{treatment}_{rep}_{strand}.txt",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND)
+
+           
+rule bam_readcount_pos_mRNA_all:
+    input:
+        "03_bam_separate/{sample}_{treatment}_{rep}_pos.bam"
+    output:
+        "04_bam_readcount/{sample}_{treatment}_{rep}_pos.txt"
+    params:
+        fasta=chr_fasta,
+        bed=chr_bed
+    shell:
+        """
+        echo -e "chrom\tpos\tbase_ref\ttotal_count\tt_count\tdel_count\tdel_ratio" > {output}
+        /disk/user_09/anaconda3/envs/pseudoU/bin/bam-readcount -w 1 -f {params.fasta} \
+            {input} -l {params.bed} \
+        | awk 'BEGIN {{OFS="\t"}} \
+            {{split($9,T,":"); \
+	        del_count=0; \
+	        for (i=11;i<NF+1;i++) \
+	 	        {{split($i, mutes, ":"); \
+		        if (mutes[1] ~ /[-][tT]/ && mutes[8] != 0) \
+		        {{del_count += mutes[2]}} }}; \
+	        if(del_count==0)  {{ del_ratio=0 }} \
+	            else {{del_ratio=del_count/(T[2]+del_count)}}; \
+	        if ($3 ~ /[Tt]/ ) \
+	 	        {{print $1,$2,$3,$4,T[2],del_count,del_ratio}} }} ' \
+        >> {output}
+        """
+    

@@ -1,0 +1,57 @@
+---
+title: "07_site_filter2"
+author: "Tang Li"
+date: '2022-11-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ttFunctions)
+
+#obj: ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/")
+```
+
+## filter2
+
+```{r function load filter files}
+load_filter_files <- function(file_path_pos,file_path_neg,del_count=5,del_ratio=0.05){
+  
+  # pos
+  BS_pos <- read.table(file_path_pos,header = T)
+  BS_pos$base_ref <- "+"
+  rownames(BS_pos) <- paste0(BS_pos$chrom,"_",BS_pos$pos)
+  
+  # neg
+  BS_neg <- read.table(file_path_neg,header = T)
+  BS_neg$base_ref <- "-"
+  rownames(BS_neg) <- paste0(BS_neg$chrom,"_",BS_neg$pos)
+  
+  BS <- rbind(BS_pos,BS_neg)
+
+  filter_del_ratio <- BS$del_ratio >= del_ratio
+  filter_del_count <- BS$del_count >= del_count
+
+  site <- BS[filter_del_ratio & filter_del_count,]
+
+  return(site)
+}
+
+```
+
+## load filter1 files
+
+```{r load}
+dir.create("02_BS_count3_ratio3")
+for (group in c("IC_BS","IR_BS","P12_BS","P16_BS")){
+  for (rep in 1:3){
+    assign(paste0(group,"_",rep),load_filter_files(file_path_pos = paste0("./01_BS_count1/",group,"_",rep,"_pos.txt"),
+                                                   file_path_neg = paste0("./01_BS_count1/",group,"_",rep,"_neg.txt"),del_count = 3,del_ratio = 0.03))
+    tt_wt(get(paste0(group,"_",rep)),paste0("02_BS_count3_ratio3/",group,"_",rep,".txt"),row.names = T,col.names = T)
+  }
+}
+
+```

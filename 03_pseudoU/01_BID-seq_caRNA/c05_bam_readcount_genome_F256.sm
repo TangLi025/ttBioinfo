@@ -1,0 +1,86 @@
+SAMPLE=["IC","IR","P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+CHR=["chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY","chrM"]
+
+STRAND=["pos","neg"]
+
+chr_fasta="/disk/user_09/reference/genome/hg/GRCh38.p13.genome_ERCC.fa"
+chr_bed="/disk/user_09/reference/genome/hg/GRCh38.p13.genome_ERCC.bed"
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}_{strand}.txt",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND)
+
+rule bam_readcount_pos_mRNA:
+    input:
+        "04_hisat2_mapping/03_bam_separate_F256/{sample}_{treatment}_{rep}_pos.bam"
+    output:
+        temp("04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}/{sample}_{treatment}_{rep}_pos_{chr}.txt")
+    params:
+        fasta=chr_fasta
+    shell:
+        """
+        /disk/user_09/anaconda3/envs/pseudoU/bin/bam-readcount -w 1 -f {params.fasta} \
+            {input} {wildcards.chr} \
+        | awk 'BEGIN {{OFS="\t"}} \
+            {{split($9,T,":"); \
+	        del_count=0; \
+	        for (i=11;i<NF+1;i++) \
+	 	        {{split($i, mutes, ":"); \
+		        if (mutes[1] ~ /[-][tT]/ && mutes[8] != 0) \
+		        {{del_count += mutes[2]}} }}; \
+	        if(del_count==0)  {{ del_ratio=0 }} \
+	            else {{del_ratio=del_count/(T[2]+del_count)}}; \
+	        if ($3 ~ /[Tt]/ ) \
+	 	        {{print $1,$2,$3,$4,T[2],del_count,del_ratio}} }} ' \
+        > {output}
+        """
+	           
+rule bam_readcount_pos_mRNA_all:
+    input:
+        expand("04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}/{sample}_{treatment}_{rep}_pos_{chr}.txt",sample='{sample}',treatment='{treatment}',rep='{rep}',chr=CHR)
+    output:
+        "04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}_pos.txt"
+    shell:
+        """
+        echo -e "chrom\tpos\tbase_ref\ttotal_count\tt_count\tdel_count\tdel_ratio" > {output}
+        cat {input} >> {output}
+        """
+        
+rule bam_readcount_neg_mRNA:
+    input:
+        "04_hisat2_mapping/03_bam_separate_F256/{sample}_{treatment}_{rep}_neg.bam"
+    output:
+        temp("04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}/{sample}_{treatment}_{rep}_neg_{chr}.txt")
+    params:
+        fasta=chr_fasta
+    shell:
+        """
+        /disk/user_09/anaconda3/envs/pseudoU/bin/bam-readcount -w 1 -f {params.fasta} \
+            {input} {wildcards.chr} \
+        | awk 'BEGIN {{OFS="\t"}} \
+            {{split($6,A,":"); \
+	        del_count=0; \
+	        for (i=11;i<NF+1;i++) \
+	 	        {{split($i, mutes, ":"); \
+		        if (mutes[1] ~ /[-][aA]/ && mutes[8] != 0) \
+		        {{del_count += mutes[2]}} }}; \
+	        if(del_count==0)  {{ del_ratio=0 }} \
+	            else {{del_ratio=del_count/(A[2]+del_count)}}; \
+	        if ($3 ~ /[Aa]/ ) \
+	 	        {{print $1,$2,$3,$4,A[2],del_count,del_ratio}} }} ' \
+        > {output}
+        """
+
+rule bam_readcount_neg_mRNA_all:
+    input:
+        expand("04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}/{sample}_{treatment}_{rep}_neg_{chr}.txt",sample='{sample}',treatment='{treatment}',rep='{rep}',chr=CHR)
+    output:
+        "04_hisat2_mapping/04_bam_readcount_F256/{sample}_{treatment}_{rep}_neg.txt"
+    shell:
+        """
+        echo -e "chrom\tpos\tbase_ref\ttotal_count\tt_count\tdel_count\tdel_ratio" > {output}
+        cat {input} >> {output}
+        """

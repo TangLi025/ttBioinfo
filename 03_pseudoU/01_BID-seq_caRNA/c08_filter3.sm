@@ -1,0 +1,41 @@
+SAMPLE=["IC","IR","P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+STRAND=["pos","neg"]
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/06_site_filter/01_BS03_input01/{sample}_{treatment}_{rep}_{strand}.txt",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND),
+    expand("04_hisat2_mapping/06_site_filter/05_BS03_count3/{sample}_BS_{rep}_{strand}.txt",sample=SAMPLE,rep=REP,strand=STRAND)
+    
+    
+rule bam_readcount_filter2_BS:
+    input:
+        "04_hisat2_mapping/05_polyT_merge/{sample}_BS_{rep}_{strand}.txt"
+    output:
+        "04_hisat2_mapping/06_site_filter/01_BS03_input01/{sample}_BS_{rep}_{strand}.txt"
+    shell:
+        """
+        cat {input} | awk -v OFS='\t' '{{if ($7 >= 0.03) {{print $0}} }}' > {output}
+        """
+
+rule bam_readcount_filter2_input:
+    input:
+        "04_hisat2_mapping/05_polyT_merge/{sample}_input_{rep}_{strand}.txt"
+    output:
+        "04_hisat2_mapping/06_site_filter/01_BS03_input01/{sample}_input_{rep}_{strand}.txt"
+    shell:
+        """
+        cat {input} | awk -v OFS='\t' '{{if ($7 >= 0.01) {{print $0}} }}' > {output}
+        """
+
+rule bam_readcount_filter_BS_del_count:
+    input:
+        "04_hisat2_mapping/06_site_filter/01_BS03_input01/{sample}_BS_{rep}_{strand}.txt"
+    output:
+        "04_hisat2_mapping/06_site_filter/05_BS03_count3/{sample}_BS_{rep}_{strand}.txt"
+    shell:
+        """
+        cat {input} | awk -v OFS='\t' '{{if ($6 >= 3) {{print $0}} }}' > {output}
+        """

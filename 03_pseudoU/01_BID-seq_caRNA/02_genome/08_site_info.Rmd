@@ -1,0 +1,243 @@
+---
+title: "07_site_rep_filter"
+author: "Tang Li"
+date: '2022-11-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(tidyverse)
+library(VennDiagram)
+#install.packages("ggbeeswarm")
+library(ggbeeswarm)
+library(reshape2)
+library(ttFunctions)
+
+#obj: ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/")
+```
+
+## get all site info
+```{r allsite name}
+site_name <- c(rownames(IC_BS_1),rownames(IC_BS_2),rownames(IC_BS_3),
+               rownames(IR_BS_1),rownames(IR_BS_2),rownames(IR_BS_3),
+               rownames(P12_BS_1),rownames(P12_BS_2),rownames(P12_BS_3),
+               rownames(P16_BS_1),rownames(P16_BS_2),rownames(P16_BS_3))
+site_name <- site_name[!duplicated(site_name)]
+tt_wt(site_name,"02_BS_count3_ratio3/site_name_all.txt")
+
+```
+
+```{bash get site info in all samples}
+# 整理bam_readcount各个样本的信息并排序
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/04_bam_readcount
+mkdir 01_sorted
+for i in {P12,P16,IC,IR}; 
+do 
+  for j in {input,BS}; 
+  do 
+    for k in {1,2,3}; 
+    do
+      cat ${i}_${j}_${k}_pos.txt ${i}_${j}_${k}_neg.txt \
+      | awk -v OFS='\t' '{print $1"_"$2,$0}' \
+      |sort -k 1b,1 > 01_sorted/${i}_${j}_${k}.txt & 
+    done; 
+  done; 
+done
+
+# site排序
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/02_BS_count3_ratio3
+
+cat site_name_all.txt |sort -k 1b,1 > site_name_all_sort.txt
+cd ../
+
+# 获取每个样本里的所有site信息
+mkdir 03_site_all_sample
+for i in {IC,IR,P12,P16}; 
+do 
+  for j in {input,BS}; 
+  do 
+    for k in {1,2,3}; 
+    do 
+      join -a 1 -1 1 -2 1 02_BS_count3_ratio3/site_name_all_sort.txt \
+        ../04_bam_readcount/01_sorted/${i}_${j}_${k}.txt > 03_site_all_sample/site_all_${i}_${j}_${k}.txt & 
+    done; 
+  done; 
+done
+
+```
+
+```{r combine info in 1 file}
+
+site_all <- fread("03_site_all_sample/site_all_IC_BS_1.txt",fill=T)
+
+site_all <- data.frame(chr=site_all$V2,pos=site_all$V3,strand=ifelse(site_all$V4=="T","+","-"))
+
+site_sen <- site_all
+for (i in c("P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      print(paste0("03_site_all_sample/site_all_",i,"_",j,"_",k,".txt"))
+      new_group <- fread(paste0("03_site_all_sample/site_all_",i,"_",j,"_",k,".txt"),fill=T,sep=" ",header = F)
+      site_sen[,paste(i,j,k,"total_count",sep="_")] <- new_group$V5
+      site_sen[,paste(i,j,k,"t_count",sep="_")] <- new_group$V6
+      site_sen[,paste(i,j,k,"del_count",sep="_")] <- new_group$V7
+      site_sen[,paste(i,j,k,"del_ratio",sep="_")] <- new_group$V8
+    }
+  }
+}
+
+table(is.na(site_sen))
+for (i in 1:ncol(site_sen)){
+  site_sen[,i][is.na(site_sen[,i])] <- 0
+} 
+
+site_icr <- site_all
+for (i in c("IC","IR")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      print(paste0("03_site_all_sample/site_all_",i,"_",j,"_",k,".txt"))
+      new_group <- fread(paste0("03_site_all_sample/site_all_",i,"_",j,"_",k,".txt"),fill=T,sep=" ",header = F)
+      site_icr[,paste(i,j,k,"total_count",sep="_")] <- new_group$V5
+      site_icr[,paste(i,j,k,"t_count",sep="_")] <- new_group$V6
+      site_icr[,paste(i,j,k,"del_count",sep="_")] <- new_group$V7
+      site_icr[,paste(i,j,k,"del_ratio",sep="_")] <- new_group$V8
+    }
+  }
+}
+
+table(is.na(site_icr))
+for (i in 1:ncol(site_icr)){
+  site_icr[,i][is.na(site_icr[,i])] <- 0
+} 
+
+dir.create("04_site_all_info")
+tt_wt(site_sen,"04_site_all_info/site_sen.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+tt_wt(site_icr,"04_site_all_info/site_icr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+```
+
+## site_sen
+
+## site motif & fraction
+
+```{bash site motif & calculate fraction}
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/
+mkdir 05_site_motif
+
+sed '1d' 04_site_all_info/site_sen.txt |awk -v OFS='\t' '{if ($3=="+") {print $1,$2-3,$2+2,$1"_"$2,".",$3}}' > 05_site_motif/site_sen_2_pos.bed
+sed '1d' 04_site_all_info/site_sen.txt |awk -v OFS='\t' '{if ($3=="-") {print $1,$2-3,$2+2,$1"_"$2,".",$3}}' > 05_site_motif/site_sen_2_neg.bed
+
+conda activate m6A
+
+cd 05_site_motif
+seqtk subseq -t ~/reference/genome/hg/GRCh38.p13.genome.fa site_sen_2_pos.bed > site_sen_2_pos.fa
+seqtk subseq -t ~/reference/genome/hg/GRCh38.p13.genome.fa site_sen_2_neg.bed > site_sen_2_neg.fa
+
+cat site_sen_2_neg.fa |awk '{print $3}' |rev |tr ATCG TAGC > site_sen_2_neg.seq
+
+cat site_sen_2_neg.fa |awk '{print $1,$2}'|paste - site_sen_2_neg.seq > site_sen_2_neg.fa2 
+cat site_sen_2_pos.fa site_sen_2_neg.fa2 > site_sen_2.fa
+
+
+
+awk -v OFS='\t' '{print $1,$2+2,$3}' site_sen_2.fa |sort -k 3 > site_sen_2.motif
+
+sed '1d' ~/Data/09_PseudoU/01_aging/calibration_curves_fitting_args.tsv | sort -k 1 | join -a 1 -1 3 -2 1 site_sen_2.motif - > site_sen_2.fraction
+```
+
+## site anno
+
+```{bash annotatePeaks.pl}
+
+cd ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/
+sed '1d' 04_site_all_info/site_sen.txt |awk -v OFS='\t' '{print $1,$2,$2+1,$1"_"$2,".",$3}' > 04_site_all_info/site_sen.bed
+
+mkdir 06_site_anno
+
+## hg38 
+cat 04_site_all_info/site_sen.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+    | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - hg38 -cpu 10 \
+    1> 06_site_anno/site_sen_anno_hg38.txt 2>06_site_anno/site_sen_anno_hg38.log &
+
+## ensembl all
+cat 04_site_all_info/site_sen.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa -gtf /disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.chr_UTR.gtf -cpu 10 1> 06_site_anno/site_sen_anno_ensembl_all.txt 2>06_site_anno/site_sen_anno_ensembl_all.log &
+
+## ensembl basic
+cat 04_site_all_info/site_sen.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa -gtf /disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.gtf -cpu 10 1> 06_site_anno/site_sen_anno_ensembl_basic.txt 2>06_site_anno/site_sen_anno_ensembl_basic.log &
+
+## ensembl basic_pc
+cat 04_site_all_info/site_sen.bed |awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - /disk/user_09/reference/genome/hg/GRCh38.p13.genome.fa -gtf /disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc.gtf -cpu 10 1> 06_site_anno/site_sen_anno_ensembl_basic_pc.txt 2>06_site_anno/site_sen_anno_ensembl_basic_pc.log &
+
+```
+
+```{r combine fraction}
+
+site_motif <- read.delim("05_site_motif/site_sen_2.fraction",sep = ' ',header = F)
+colnames(site_motif) <- c("motif","chr","pos","fit_A","fit_B","fit_R")
+
+table(is.na(site_motif))
+for (i in 1:ncol(site_motif)){
+  site_motif[,i][is.na(site_motif[,i])] <- 0
+} 
+
+#site_info <- read.table("02_site_info/site_sen.txt",header = T)
+site_info <- site_sen
+
+site_info <- as.data.frame(merge(site_info,site_motif))
+
+fit_A <- site_info$fit_A
+fit_B <- site_info$fit_B
+fit_R <- site_info$fit_R
+for (i in c("P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      X <- site_info[,paste(i,j,k,"del_ratio",sep="_")]
+      fraction <- (X-fit_B)/(X*fit_A+fit_R-fit_A*fit_R-fit_B)
+      print(paste(i,j,k,"del_ratio",sep="_"))
+      for (r in 1:dim(site_info)[1]){
+        site_info[r,paste(i,j,k,"del_fraction",sep="_")] <- ifelse(X[r]<=fit_B[r],0,ifelse(fraction[r]>1,1,fraction[r])) 
+      }
+    }
+  }
+}
+```
+
+
+
+```{r combine anno}
+### import site_anno
+
+gene_name <- read.table("/disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.gene_name.txt",header = T)
+
+site_anno <- read.delim("06_site_anno/site_sen_anno_ensembl_basic_pc2.txt",row.names = 1)
+site_anno <- site_anno[,c(1,2,4,7)]
+colnames(site_anno) <- c("chr","pos","strand","Annotation")
+
+site_anno$region <- sapply(strsplit(site_anno$Annotation,split=" (",fixed = T),"[",1)
+site_anno$transcript_id <- substr(sapply(strsplit(site_anno$Annotation,split=" (",fixed = T),"[",2),1,15)
+
+site_anno <- merge(site_anno,gene_name,all.x=T,sort=T)[,c(2,3,4,6,1,7,8)]
+
+rownames(site_anno) <- paste0(site_anno$chr,"_",site_anno$pos)
+
+### merge anno into site_info
+#site_info <- read.table("site_info_fraction.txt",header = T)
+
+site_info_anno <- merge(site_info,site_anno,by=c("chr","pos","strand"))
+
+site_info_anno$P12_mean_frac <- (site_info_anno$P12_BS_1_del_fraction+site_info_anno$P12_BS_2_del_fraction+site_info_anno$P12_BS_3_del_fraction)/3
+site_info_anno$P16_mean_frac <- (site_info_anno$P16_BS_1_del_fraction+site_info_anno$P16_BS_2_del_fraction+site_info_anno$P16_BS_3_del_fraction)/3
+
+site_info_anno$diff_frac <- site_info_anno$P16_mean_frac-site_info_anno$P12_mean_frac
+                                  
+site_info_anno$diff_frac_group <- ifelse(site_info_anno$diff_frac>0.1,"P16_high",ifelse(site_info_anno$diff_frac< -0.1,"P12_high","NC"))
+
+tt_wt(site_info_anno,"04_site_all_info/site_info_sen.txt",quote = F,sep = '\t',row.names = F,col.names = T)
+
+```
+
+

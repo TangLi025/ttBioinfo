@@ -1,0 +1,257 @@
+SAMPLE=["IC","IR","P12","P16"]
+#TREATMENT=["input","BS"]
+#REP=["1","2","3"]
+
+#SAMPLE=["P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+INDEX="/disk/user_09/reference/index/hisat2/hg38_ERCC/hg38_ERCC"
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/hg38_rRNA/hg38_rRNA"
+INDEX_sncRNA="/disk/user_03/database/GRCh38_sncRNA/bowtie2_index/sncRNA"
+
+
+rule all:
+  input:
+    "02_fastq_derRNA/02_filter5/flagstat/flagstat_summary.txt",
+    expand("02_fastq_derRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai",sample=SAMPLE,treatment=TREATMENT,rep=REP),
+    "03_fastq_desncRNA/02_filter5/flagstat/flagstat_summary.txt",
+    expand("03_fastq_desncRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai",sample=SAMPLE,treatment=TREATMENT,rep=REP),
+    "04_hisat2_mapping/02_filter5/flagstat/flagstat_summary.txt",
+    expand("04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai",sample=SAMPLE,treatment=TREATMENT,rep=REP)
+
+rule bowtie2_mapping:
+  input:
+    "01_trim_galore/03_fastp/{sample}_{treatment}_{rep}.fq.gz"
+  output:
+    R1="02_fastq_derRNA/00_fastq_derRNA/{sample}_{treatment}_{rep}.derRNA.fq.gz",
+    bam="02_fastq_derRNA/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  params:
+    index=INDEX_rRNA,
+    summary="02_fastq_derRNA/01_bam_raw/{sample}_{treatment}_{rep}.summary"
+  log:
+    "logs/derRNA/{sample}_{treatment}_{rep}.log"
+  threads: 15
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --end-to-end --no-unal \
+    --un-gz {output.R1} \
+    --score-min L,4,-0.5 --mp 4,1 --rdg 0,2 \
+    --threads {threads} -U {input[0]} 2> {params.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u -F 4 \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bowtie2_mapping_filter:
+  input:
+    bam="02_fastq_derRNA/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  output:
+    bam_filter="02_fastq_derRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  log:
+    "logs/derRNA_filter/{sample}_{treatment}_{rep}.log"
+  threads: 2
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -h {input.bam} \
+    | awk '{{ n_mismatch=0; for(i=12; i<=NF; i++) {{ split($i, items, ":"); if(items[1]=="NM") {{n_mismatch=items[3]}} }}; if ( $0 ~/^@/ || n_mismatch <= 5 ) {{print $0}} }}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam_filter} \
+    1> {log} 2>&1
+    """
+
+rule bam_flagstat_rRNA:
+  input:
+    "02_fastq_derRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "02_fastq_derRNA/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat"
+  log:
+    "logs/rRNA_flagstat/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary_rRNA:
+  input:
+    expand("02_fastq_derRNA/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat",sample=SAMPLE,treatment=TREATMENT,rep=REP)
+  output:
+    "02_fastq_derRNA/02_filter5/flagstat/flagstat_summary_num.txt",
+    "02_fastq_derRNA/02_filter5/flagstat/flagstat_summary.txt"
+  log:
+    "logs/bam_raw_flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input} > {output[1]}
+    """
+
+rule bam_index_rRNA:
+  input:
+    "02_fastq_derRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "02_fastq_derRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai"
+  log:
+    "logs/bam_index_rRNA/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"
+   
+
+rule bowtie2_mapping_sncRNA:
+  input:
+    "02_fastq_derRNA/00_fastq_derRNA/{sample}_{treatment}_{rep}.derRNA.fq.gz"
+  output:
+    R1="03_fastq_desncRNA/00_fastq_derRNA/{sample}_{treatment}_{rep}.desncRNA.fq.gz",
+    bam="03_fastq_desncRNA/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  params:
+    index=INDEX_sncRNA,
+    summary="03_fastq_desncRNA/01_bam_raw/{sample}_{treatment}_{rep}.summary"
+  log:
+    "logs/desncRNA/{sample}_{treatment}_{rep}.log"
+  threads: 15
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --end-to-end --no-unal \
+    --un-gz {output.R1} \
+    --score-min L,4,-0.5 --mp 4,1 --rdg 0,2 \
+    --threads {threads} -U {input[0]} 2> {params.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u -F 4 \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bowtie2_mapping_sncRNA_filter:
+  input:
+    bam="03_fastq_desncRNA/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  output:
+    bam_filter="03_fastq_desncRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  log:
+    "logs/desncRNA_filter5/{sample}_{treatment}_{rep}.log"
+  threads: 2
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -h {input.bam} \
+    | awk '{{ n_mismatch=0; for(i=12; i<=NF; i++) {{ split($i, items, ":"); if(items[1]=="NM") {{n_mismatch=items[3]}} }}; if ( $0 ~/^@/ || n_mismatch <= 5 ) {{print $0}} }}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam_filter} \
+    1> {log} 2>&1
+    """
+
+rule bam_flagstat_sncRNA:
+  input:
+    "03_fastq_desncRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "03_fastq_desncRNA/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat"
+  log:
+    "logs/sncRNA_flagstat/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary_sncRNA:
+  input:
+    expand("03_fastq_desncRNA/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat",sample=SAMPLE,treatment=TREATMENT,rep=REP)
+  output:
+    "03_fastq_desncRNA/02_filter5/flagstat/flagstat_summary_num.txt",
+    "03_fastq_desncRNA/02_filter5/flagstat/flagstat_summary.txt"
+  log:
+    "logs/sncRNA_flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input} > {output[1]}
+    """
+
+rule bam_index_sncRNA:
+  input:
+    "03_fastq_desncRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "03_fastq_desncRNA/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai"
+  log:
+    "logs/bam_index_sncRNA/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"
+
+rule hisat2_mapping:
+  input:
+    "03_fastq_desncRNA/00_fastq_derRNA/{sample}_{treatment}_{rep}.desncRNA.fq.gz"
+  output:
+    bam="04_hisat2_mapping/01_bam_raw/{sample}_{treatment}_{rep}.bam",
+    summary="04_hisat2_mapping/01_bam_raw/{sample}_{treatment}_{rep}.summary.txt",
+    outname="04_hisat2_mapping/00_unMap/{sample}_{treatment}_{rep}.unMapRNA.fq.gz"
+  params:
+    index=INDEX
+  log:
+    "logs/hisat2_mapping/{sample}_{treatment}_{rep}.log"
+  threads: 15
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/hisat2 -x {params.index} --rna-strandness FR \
+    --summary-file {output.summary} --no-unal \
+    -p {threads} -U {input[0]} \
+    --bowtie2-dp 2 --score-min L,4,-0.5 --sp 5,1 --mp 4,1 --rdg 0,2 \
+    --un-gz {output.outname} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule hisat2_mapping_filter:
+  input:
+    "04_hisat2_mapping/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  output:
+    bam_filter="04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  log:
+    "logs/hisat2_mapping_filter5/{sample}_{treatment}_{rep}.log"
+  threads: 1
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -h {input} \
+    | awk '{{ n_mismatch=0; for(i=12; i<=NF; i++) {{ split($i, items, ":"); if(items[1]=="NM") {{n_mismatch=items[3]}} }}; if ( $0 ~/^@/ || n_mismatch <= 5 ) {{print $0}} }}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam_filter} \
+    1> {log} 2>&1
+    """
+
+rule bam_index_hisat2:
+  input:
+    "04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai"
+  log:
+    "logs/bam_index/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"
+    
+rule bam_flagstat_hisat2:
+  input:
+    "04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam"
+  output:
+    "04_hisat2_mapping/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat"
+  log:
+    "logs/bam_raw_flagstat/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary_hisat2:
+  input:
+    expand("04_hisat2_mapping/02_filter5/flagstat/{sample}_{treatment}_{rep}_filter.flagstat",sample=SAMPLE,treatment=TREATMENT,rep=REP)
+  output:
+    "04_hisat2_mapping/02_filter5/flagstat/flagstat_summary_num.txt",
+    "04_hisat2_mapping/02_filter5/flagstat/flagstat_summary.txt"
+  log:
+    "logs/bam_raw_flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input} > {output[1]}
+    """

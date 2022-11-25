@@ -1,0 +1,316 @@
+---
+title: "06_site_rep_filter"
+author: "Tang Li"
+date: '2022-11-21'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(tidyverse)
+library(VennDiagram)
+library(ggbeeswarm)
+library(ggcor)
+library(ggprism)
+library(ggpubr)
+library(reshape2)
+library(Rsubread)
+library(ttFunctions)
+
+# proj: ~/Data/09_PseudoU/06_aging_pU_SE/02_fastq_derRNA/06_site_filter/
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/07_rRNA_modified/")
+```
+
+```{r combine info in 1 file}
+
+allsite <- fread("04_bam_readcount/IC_BS_1_pos.txt",fill=T)
+
+allsite <- data.frame(chr=allsite$chrom,pos=allsite$pos)
+
+for (i in c("IC","IR","P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      print(paste0("04_bam_readcount/",i,"_",j,"_",k,"_pos.txt"))
+      new_group <- read.table(paste0("04_bam_readcount/",i,"_",j,"_",k,"_pos.txt"),header = T)
+      allsite[,paste(i,j,k,"total_count",sep="_")] <- new_group$total_count
+      allsite[,paste(i,j,k,"t_count",sep="_")] <- new_group$t_count
+      allsite[,paste(i,j,k,"del_count",sep="_")] <- new_group$del_count
+      allsite[,paste(i,j,k,"del_ratio",sep="_")] <- new_group$del_ratio
+    }
+  }
+}
+
+dir.create("05_site_info")
+dir.create("05_site_info/01_site_combine")
+tt_wt(allsite,"05_site_info/01_site_combine/site_combine.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+```
+
+## site motif & fraction
+
+```{bash site motif & calculate fraction}
+cd ~/Data/09_PseudoU/06_aging_pU_SE/07_rRNA_modified/05_site_info
+mkdir 02_site_motif
+
+sed '1d' 01_site_combine/site_combine.txt |awk -v OFS='\t' '{if ($2>2) {print $1,$2-3,$2+2,$1"_"$2,".","+"}}' > 02_site_motif/site_combine_2.bed
+
+conda activate m6A
+
+cd 02_site_motif
+seqtk subseq -t /disk/user_09/reference/genome/hg/hg38_rRNA_modified.fa site_combine_2.bed > site_combine_2.fa
+
+awk -v OFS='\t' '{print $1,$2+2,$3}' site_combine_2.fa |sort -k 3 > site_combine_2.motif
+
+sed '1d' ~/Data/09_PseudoU/01_aging/calibration_curves_fitting_args.tsv | sort -k 1 | join -a 1 -1 3 -2 1 site_combine_2.motif - > site_combine_2.fraction
+```
+
+```{r combine fraction}
+
+site_motif <- read.delim("05_site_info/02_site_motif/site_combine_2.fraction",sep = ' ',header = F)
+colnames(site_motif) <- c("motif","chr","pos","fit_A","fit_B","fit_R")
+
+table(is.na(site_motif))
+
+for (i in 1:ncol(site_motif)){
+  site_motif[,i][is.na(site_motif[,i])] <- 0
+} 
+
+site_info <- read.table("05_site_info/01_site_combine/site_combine.txt",header = T)
+
+site_info <- merge(site_info,site_motif)
+
+fit_A <- site_info$fit_A
+fit_B <- site_info$fit_B
+fit_R <- site_info$fit_R
+for (i in c("IC","IR","P12","P16")){
+  for (k in c("1","2","3")){
+    for (j in c("input","BS")){
+      X <- site_info[,paste(i,j,k,"del_ratio",sep="_")]
+      fraction <- (X-fit_B)/(X*fit_A+fit_R-fit_A*fit_R-fit_B)
+      print(paste(i,j,k,"del_ratio",sep="_"))
+      for (r in 1:dim(site_info)[1]){
+        site_info[r,paste(i,j,k,"del_fraction",sep="_")] <- ifelse(X[r]<=fit_B[r],0,ifelse(fraction[r]>1,1,fraction[r])) 
+      }
+    }
+  }
+}
+
+write.table(site_info,"05_site_info/01_site_combine/02_site_info_fraction.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+```
+
+
+```{r barplot rRNA}
+dir.create("06_rRNA_del_rate")
+
+site_info$P12_BS_del_ratio <- apply(site_info[,c("P12_BS_1_del_ratio","P12_BS_2_del_ratio","P12_BS_3_del_ratio")],1,mean)
+site_info$P16_BS_del_ratio <- apply(site_info[,c("P16_BS_1_del_ratio","P16_BS_2_del_ratio","P16_BS_3_del_ratio")],1,mean)
+site_info$IC_BS_del_ratio <- apply(site_info[,c("IC_BS_1_del_ratio","IC_BS_2_del_ratio","IC_BS_3_del_ratio")],1,mean)
+site_info$IR_BS_del_ratio <- apply(site_info[,c("IR_BS_1_del_ratio","IR_BS_2_del_ratio","IR_BS_3_del_ratio")],1,mean)
+site_info$P12_BS_del_fraction <- apply(site_info[,c("P12_BS_1_del_fraction","P12_BS_2_del_fraction","P12_BS_3_del_fraction")],1,mean)
+site_info$P16_BS_del_fraction <- apply(site_info[,c("P16_BS_1_del_fraction","P16_BS_2_del_fraction","P16_BS_3_del_fraction")],1,mean)
+site_info$IC_BS_del_fraction <- apply(site_info[,c("IC_BS_1_del_fraction","IC_BS_2_del_fraction","IC_BS_3_del_fraction")],1,mean)
+site_info$IR_BS_del_fraction <- apply(site_info[,c("IR_BS_1_del_fraction","IR_BS_2_del_fraction","IR_BS_3_del_fraction")],1,mean)
+
+site_info$P16_input_del_fraction <- apply(site_info[,c("P16_input_1_del_fraction","P16_input_2_del_fraction","P16_input_3_del_fraction")],1,mean)
+
+site_info$P16_P12_diff_fraction <- site_info$P16_BS_del_fraction-site_info$P12_BS_del_fraction
+site_info$P16_P12_diff_ratio <- site_info$P16_BS_del_ratio-site_info$P12_BS_del_ratio
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
+
+
+pdf("06_rRNA_del_rate/01_barplot_fraction_5S.pdf",width = 5)
+title_sample <- c(expression("5.8S"~rRNA),expression("5S"~rRNA))
+names(title_sample) <- c("RNA5-8SN2","RNA5S16")
+for (i in c("RNA5-8SN2","RNA5S16")){
+  p <- ggplot(site_info[site_info$chr==i,])+
+    geom_hline(yintercept = 0)+
+    geom_bar(aes(x=pos,y=P16_BS_del_fraction),stat = "summary",fun=mean,position="dodge",width =0.9,show.legend = F,fill="#3279b1")+ #绘制柱状图
+    geom_point(aes(x=pos,y=P16_BS_del_fraction),col="#23567d")+
+    geom_point(aes(x=pos,y=P16_P12_diff_fraction))+
+    ylim(-0.1,1)+
+    labs(x=NULL,y=expression(Deletion~fraction))+#标题
+    theme_bar+
+    ggtitle(title_sample[i])
+  print(p)
+}
+dev.off()
+
+pdf("06_rRNA_del_rate/01_barplot_fraction_18S_28S.pdf",width = 10)
+title_sample <- c(expression("18S"~rRNA),expression("28S"~rRNA))
+names(title_sample) <- c("RNA18SN2","RNA28SN4")
+for (i in c("RNA18SN2","RNA28SN4")){
+  p <- ggplot(site_info[site_info$chr==i,])+
+    geom_hline(yintercept = 0)+
+    geom_bar(aes(x=pos,y=P16_BS_del_fraction),stat = "summary",fun=mean,position="dodge",width =0.9,show.legend = F,fill="#3279b1")+ #绘制柱状图
+    geom_point(aes(x=pos,y=P16_BS_del_fraction),col="#23567d")+
+    geom_point(aes(x=pos,y=P16_P12_diff_fraction))+
+        ylim(-0.1,1)+
+    labs(x=NULL,y=expression(Deletion~fraction))+#标题
+    theme_bar+
+    ggtitle(title_sample[i])
+  print(p)
+}
+dev.off()
+
+pdf("06_rRNA_del_rate/01_barplot_ratio_5S.pdf",width = 5)
+title_sample <- c(expression("5.8S"~rRNA),expression("5S"~rRNA))
+names(title_sample) <- c("RNA5-8SN2","RNA5S16")
+for (i in c("RNA5-8SN2","RNA5S16")){
+  p <- ggplot(site_info[site_info$chr==i,])+
+    geom_hline(yintercept = 0)+
+    geom_bar(aes(x=pos,y=P16_BS_del_ratio),stat = "summary",fun=mean,position="dodge",width =0.9,show.legend = F,fill="#3279b1")+ #绘制柱状图
+    geom_point(aes(x=pos,y=P16_BS_del_ratio),col="#23567d")+
+    geom_point(aes(x=pos,y=P16_P12_diff_ratio))+
+    ylim(-0.1,1)+
+    labs(x=NULL,y=expression(Deletion~ratio))+#标题
+    theme_bar+
+    ggtitle(title_sample[i])
+  print(p)
+}
+dev.off()
+
+pdf("06_rRNA_del_rate/01_barplot_ratio_18S_28S.pdf",width = 10)
+title_sample <- c(expression("18S"~rRNA),expression("28S"~rRNA))
+names(title_sample) <- c("RNA18SN2","RNA28SN4")
+for (i in c("RNA18SN2","RNA28SN4")){
+  p <- ggplot(site_info[site_info$chr==i,])+
+    geom_hline(yintercept = 0)+
+    geom_bar(aes(x=pos,y=P16_BS_del_ratio),stat = "summary",fun=mean,position="dodge",width =0.9,show.legend = F,fill="#3279b1")+ #绘制柱状图
+    geom_point(aes(x=pos,y=P16_BS_del_ratio),col="#23567d")+
+    geom_point(aes(x=pos,y=P16_P12_diff_ratio))+
+        ylim(-0.1,1)+
+    labs(x=NULL,y=expression(Deletion~ratio))+#标题
+    theme_bar+
+    ggtitle(title_sample[i])
+  print(p)
+}
+dev.off()
+
+pdf("06_rRNA_del_rate/02_rep_point_line.pdf",width = 5)
+  p <- ggplot(site_info[site_info$P16_BS_del_fraction>=0.01,],aes(x=P16_BS_1_del_fraction,y=P16_BS_2_del_fraction))+
+    geom_point(col="#23567d")+
+    geom_smooth(method = "lm")+
+    stat_cor(method = "pearson",size=4)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P16~rep1),y=expression(P16~rep2))+#标题
+    theme_bar+
+    ggtitle(expression(P16~BS))+
+    coord_fixed()
+  print(p)
+
+  p <- ggplot(site_info[site_info$P12_BS_del_fraction>=0.01,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#23567d")+
+    geom_smooth(method = "lm")+
+    stat_cor(method = "pearson",size=4)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~rep1),y=expression(P12~rep2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~BS))+
+    coord_fixed()
+  print(p)
+
+  p <- ggplot(site_info[site_info$IC_BS_del_fraction>=0.01,],aes(x=IC_BS_1_del_fraction,y=IC_BS_2_del_fraction))+
+    geom_point(col="#23567d")+
+    geom_smooth(method = "lm")+
+    stat_cor(method = "pearson",size=4)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(IC~rep1),y=expression(IC~rep2))+#标题
+    theme_bar+
+    ggtitle(expression(IC~BS))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info[site_info$IC_BS_del_fraction>=0.01,],aes(x=IC_BS_2_del_fraction,y=IC_BS_3_del_fraction))+
+    geom_point(col="#23567d")+
+    geom_smooth(method = "lm")+
+    stat_cor(method = "pearson",size=4)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(IC~rep2),y=expression(IC~rep3))+#标题
+    theme_bar+
+    ggtitle(expression(IC~BS))+
+    coord_fixed()
+  print(p)
+
+  p <- ggplot(site_info[site_info$IR_BS_del_fraction>=0.01,],aes(x=IR_BS_1_del_fraction,y=IR_BS_2_del_fraction))+
+    geom_point(col="#23567d")+
+    geom_smooth(method = "lm")+
+    stat_cor(method = "pearson",size=4)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(IR~rep1),y=expression(IR~rep2))+#标题
+    theme_bar+
+    ggtitle(expression(IR~BS))+
+    coord_fixed()
+  print(p)
+dev.off()
+
+pdf("06_rRNA_del_rate/02_BS_input_point_line.pdf",width = 5)
+  p <- ggplot(site_info[site_info$P16_BS_del_fraction>=0.01,],aes(x=P16_BS_del_fraction,y=P16_input_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P16~BS),y=expression(P16~input))+#标题
+    theme_bar+
+    ggtitle(expression(P16~rRNA))+
+    coord_fixed()
+  print(p)
+dev.off()
+
+pdf("06_rRNA_del_rate/03_col_heatmap.pdf")
+quickcor(site_info[site_info$IR_BS_del_fraction>=0.01,
+                   c("P12_BS_1_del_fraction","P12_BS_2_del_fraction","P12_BS_3_del_fraction",
+                     "P16_BS_1_del_fraction","P16_BS_2_del_fraction","P16_BS_3_del_fraction",
+                     "IC_BS_1_del_fraction","IC_BS_2_del_fraction","IC_BS_3_del_fraction",
+                     "IR_BS_1_del_fraction","IR_BS_2_del_fraction","IR_BS_3_del_fraction")],circular=F,cor.test = TRUE,mapping=aes(fill=r))+
+  geom_square(data=get_data(type = "upper",show.diag = F))+
+  scale_fill_gradientn(colors=cm.colors(2))+
+  geom_mark(data = get_data(type = "lower",show.diag = F),size=2.5)
+dev.off()
+
+```
+
+
+```{r fraction boxplot}
+sen_site <- site_info[sen_site$P16_BS_del_fraction>0.1 | sen_site$P12_BS_del_fraction>0.1 ,c(1,2,99,131,132)]
+sen_site_melt <- melt(sen_site,value.name = "mean_fraction",variable.names = "sample",id.vars=c("chr","pos"),measure.vars=c("P12_BS_del_fraction","P16_BS_del_fraction"))
+ggplot(sen_site_melt, aes(x = variable, y = mean_fraction,fill=variable)) +
+  geom_boxplot()+
+  geom_point(aes(col=variable),alpha=0.7,position = position_jitter(seed = 2, width = 0.3)) 
+```
+
+```{r motif frequent}
+###frequent_motif_all
+frequent_motif <- aggregate(sen_site[,c(4,5)],by=list(c(sen_site$motif)),FUN="mean")
+colnames(frequent_motif) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(sen_site$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif <- merge(motif_count,frequent_motif)
+frequent_motif$freq_percent <- frequent_motif$freq/(dim(sen_site)[1])
+
+ggplot(frequent_motif)+
+  geom_point(aes(x=freq,y=fraction_P16))+
+  geom_label(data=frequent_motif[(frequent_motif$freq>=2 | frequent_motif$fraction_P16>0.9),],aes(x=freq,y=fraction_P16,label=motif))+
+  theme_classic()
+
+ggplot(frequent_motif)+
+  geom_point(aes(x=freq,y=fraction_P12))+
+  geom_label(data=frequent_motif[(frequent_motif$freq>=35 | frequent_motif$fraction_P12>0.7),],aes(x=freq,y=fraction_P12,label=motif))+
+  theme_classic()
+```
+

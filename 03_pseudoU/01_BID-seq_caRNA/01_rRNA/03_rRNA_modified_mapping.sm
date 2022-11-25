@@ -1,0 +1,86 @@
+SAMPLE=["IC","IR","P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/hg38_rRNA_modified/hg38_rRNA_modified"
+
+rule all:
+  input:
+    "07_rRNA_modified/02_filter3/flagstat/flagstat_summary.txt",
+    expand("07_rRNA_modified/02_filter3/{sample}_{treatment}_{rep}.bam.bai",sample=SAMPLE,treatment=TREATMENT,rep=REP),
+
+rule bowtie2_mapping:
+  input:
+    "01_trim_galore/03_fastp/{sample}_{treatment}_{rep}.fq.gz"
+  output:
+    bam="07_rRNA_modified/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  params:
+    index=INDEX_rRNA,
+    summary="07_rRNA_modified/01_bam_raw/{sample}_{treatment}_{rep}.summary"
+  log:
+    "logs/07_rRNA_modified/01_bam_raw/{sample}_{treatment}_{rep}.log"
+  threads: 15
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --end-to-end --no-unal \
+    --score-min L,4,-0.5 --mp 4,1 --rdg 0,2 \
+    --threads {threads} -U {input} 2> {params.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u -F 4 \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bowtie2_mapping_filter:
+  input:
+    bam="07_rRNA_modified/01_bam_raw/{sample}_{treatment}_{rep}.bam"
+  output:
+    bam_filter="07_rRNA_modified/02_filter3/{sample}_{treatment}_{rep}.bam"
+  log:
+    "logs/derRNA_filter/{sample}_{treatment}_{rep}.log"
+  threads: 2
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -h {input.bam} \
+    | awk '{{ n_mismatch=0; for(i=12; i<=NF; i++) {{ split($i, items, ":"); if(items[1]=="NM") {{n_mismatch=items[3]}} }}; if ( $0 ~/^@/ || n_mismatch <= 3 ) {{print $0}} }}' \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -u \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam_filter} \
+    1> {log} 2>&1
+    """
+
+rule bam_flagstat_rRNA:
+  input:
+    "07_rRNA_modified/02_filter3/{sample}_{treatment}_{rep}.bam"
+  output:
+    "07_rRNA_modified/02_filter3/flagstat/{sample}_{treatment}_{rep}_filter.flagstat"
+  log:
+    "logs/rRNA_flagstat/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary_rRNA:
+  input:
+    expand("07_rRNA_modified/02_filter3/flagstat/{sample}_{treatment}_{rep}_filter.flagstat",sample=SAMPLE,treatment=TREATMENT,rep=REP)
+  output:
+    "07_rRNA_modified/02_filter3/flagstat/flagstat_summary_num.txt",
+    "07_rRNA_modified/02_filter3/flagstat/flagstat_summary.txt"
+  log:
+    "logs/bam_raw_flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'mapped' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'mapped' {input} > {output[1]}
+    """
+
+rule bam_index_rRNA:
+  input:
+    "07_rRNA_modified/02_filter3/{sample}_{treatment}_{rep}.bam"
+  output:
+    "07_rRNA_modified/02_filter3/{sample}_{treatment}_{rep}.bam.bai"
+  log:
+    "logs/bam_index_rRNA/{sample}_{treatment}_{rep}_filter.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"

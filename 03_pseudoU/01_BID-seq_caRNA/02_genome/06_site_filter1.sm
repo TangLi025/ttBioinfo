@@ -1,0 +1,20 @@
+SAMPLE=["IC","IR","P12","P16"]
+TREATMENT=["BS"]
+REP=["1","2","3"]
+
+STRAND=["pos","neg"]
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/07_site_filter2/01_BS_count1/{sample}_{treatment}_{rep}_{strand}.txt",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND)
+    
+    
+rule bam_readcount_filter1_BS:
+    input:
+        "04_hisat2_mapping/04_bam_readcount/{sample}_BS_{rep}_{strand}.txt"
+    output:
+        "04_hisat2_mapping/07_site_filter2/01_BS_count1/{sample}_BS_{rep}_{strand}.txt"
+    shell:
+        """
+        cat {input} | awk -v OFS='\t' '{{if ($6 >= 1) {{print $0}} }}' > {output}
+        """

@@ -1,0 +1,193 @@
+---
+title: "01_annotation"
+author: "Tang Li"
+date: '2022-11-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(GenomeInfoDb)
+library(rtracklayer)
+library(venn)
+
+require(knitr)
+opts_knit$set(root.dir = "~/reference/annotation/")
+```
+
+## hg38
+```{r}
+## read gtf
+hg38_gtf_gencode <- import("~/reference/annotation/hg38/gencode.v40.basic.annotation.gtf")
+hg38_gtf_ensembl <- import("~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.gtf")
+
+head(hg38_gtf_gencode$gene_id)
+head(hg38_gtf_ensembl$gene_id)
+
+## overlap between gencode and ensembl
+hg38_gtf_gencode_gene_id <- sapply(strsplit(hg38_gtf_gencode$gene_id,split = ".",fixed=T),"[",1)
+hg38_gtf_gencode_gene_id <- hg38_gtf_gencode_gene_id[!duplicated(hg38_gtf_gencode_gene_id)]
+
+hg38_gtf_ensembl_gene_id <- hg38_gtf_ensembl$gene_id
+hg38_gtf_ensembl_gene_id <- hg38_gtf_ensembl_gene_id[!duplicated(hg38_gtf_ensembl_gene_id)]
+
+venn(list(hg38_gtf_gencode_gene_id,hg38_gtf_ensembl_gene_id))
+
+head(hg38_gtf_gencode$transcript_id)
+head(hg38_gtf_ensembl$transcript_id)
+
+
+hg38_gtf_gencode_transcript_id <- sapply(strsplit(hg38_gtf_gencode$transcript_id,split = ".",fixed=T),"[",1)
+hg38_gtf_gencode_transcript_id <- hg38_gtf_gencode_transcript_id[!duplicated(hg38_gtf_gencode_transcript_id)]
+
+hg38_gtf_ensembl_transcript_id <- hg38_gtf_ensembl$transcript_id
+hg38_gtf_ensembl_transcript_id <- hg38_gtf_ensembl_transcript_id[!duplicated(hg38_gtf_ensembl_transcript_id)]
+
+venn(list(hg38_gtf_gencode_transcript_id,hg38_gtf_ensembl_transcript_id))
+
+## chr modified 
+table(hg38_gtf_gencode[hg38_gtf_gencode$type=="gene",]@seqnames)
+table(hg38_gtf_ensembl[hg38_gtf_ensembl$type=="gene",]@seqnames)
+chr_name <- c(seq(1,22),"X","Y","MT")
+hg38_gtf_ensembl_chr <- hg38_gtf_ensembl[hg38_gtf_ensembl@seqnames %in% chr_name,]
+table(hg38_gtf_ensembl_chr[hg38_gtf_ensembl_chr$type=="gene",]@seqnames)
+tail(hg38_gtf_ensembl_chr[hg38_gtf_ensembl_chr$type=="gene",]@seqnames)
+
+hg38_gtf_ensembl_chr@seqnames <- Rle(factor(paste0("chr",hg38_gtf_ensembl_chr@seqnames),levels = paste0("chr",c(seq(1,22),"X","Y","MT"))))
+tail(hg38_gtf_ensembl_chr[hg38_gtf_ensembl_chr$type=="gene",]@seqnames)
+hg38_gtf_ensembl_chr@seqnames <- Rle(factor(ifelse(hg38_gtf_ensembl_chr@seqnames=="chrMT","chrM",hg38_gtf_ensembl_chr@seqnames),levels = paste0("chr",c(seq(1,22),"X","Y","M"))))
+tail(hg38_gtf_ensembl_chr[hg38_gtf_ensembl_chr$type=="gene",]@seqnames)
+
+export(hg38_gtf_ensembl_chr,"~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.chr.gtf","gtf")
+```
+
+```{bash}
+sed 's/three_prime_utr/3UTR/g' Homo_sapiens.GRCh38.108.chr.gtf | sed 's/five_prime_utr/5UTR/g' > Homo_sapiens.GRCh38.108.chr_UTR.gtf 
+```
+
+```{r basic pc_lnc}
+
+hg38_gtf_ensembl_chr <- import("~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.chr_UTR.gtf")
+
+table(hg38_gtf_ensembl_chr$type)
+
+hg38_gtf_ensembl_basic <- hg38_gtf_ensembl_chr[hg38_gtf_ensembl_chr$gene_id %in% hg38_gtf_gencode_gene_id,]
+hg38_gtf_ensembl_basic <- hg38_gtf_ensembl_basic[hg38_gtf_ensembl_basic$transcript_id %in% hg38_gtf_gencode_transcript_id,]
+
+export(hg38_gtf_ensembl_basic,"~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.gtf","gtf")
+
+hg38_gtf_ensembl_basic_pc_lnc <- hg38_gtf_ensembl_basic[hg38_gtf_ensembl_basic$gene_biotype %in% c("lncRNA","protein_coding"),]
+export(hg38_gtf_ensembl_basic_pc_lnc,"~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc_lnc.gtf","gtf")
+
+hg38_gtf_ensembl_basic_pc <- hg38_gtf_ensembl_basic[hg38_gtf_ensembl_basic$gene_biotype %in% c("protein_coding"),]
+export(hg38_gtf_ensembl_basic_pc,"~/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc.gtf","gtf")
+
+```
+
+```{r transcript_id gene_name}
+dim(as.data.frame(hg38_gtf_ensembl[hg38_gtf_ensembl$type=="transcript",]))
+table(hg38_gtf_ensembl$type)
+
+hg38_ensembl_transcript_id_gene_name <- data.frame(transcript_id=hg38_gtf_ensembl[hg38_gtf_ensembl$type=="transcript",]$transcript_id,
+                                                   gene_id=hg38_gtf_ensembl[hg38_gtf_ensembl$type=="transcript",]$gene_id,
+                                                   gene_name=hg38_gtf_ensembl[hg38_gtf_ensembl$type=="transcript",]$gene_name)
+tt_wt(hg38_ensembl_transcript_id_gene_name,"/disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.gene_name.txt",col.names = T)
+```
+
+## mm39
+```{r}
+## read gtf
+mm39_gtf_gencode <- import("/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf")
+mm39_gtf_ensembl <- import("/disk/user_09/reference/annotation/mm39/Mus_musculus.GRCm39.108.gtf")
+
+head(mm39_gtf_gencode$gene_id)
+head(mm39_gtf_ensembl$gene_id)
+
+## overlap between gencode and ensembl
+mm39_gtf_gencode_gene_id <- sapply(strsplit(mm39_gtf_gencode$gene_id,split = ".",fixed=T),"[",1)
+mm39_gtf_gencode_gene_id <- mm39_gtf_gencode_gene_id[!duplicated(mm39_gtf_gencode_gene_id)]
+
+mm39_gtf_ensembl_gene_id <- mm39_gtf_ensembl$gene_id
+mm39_gtf_ensembl_gene_id <- mm39_gtf_ensembl_gene_id[!duplicated(mm39_gtf_ensembl_gene_id)]
+
+venn(list(mm39_gtf_gencode_gene_id,mm39_gtf_ensembl_gene_id))
+
+head(mm39_gtf_gencode$transcript_id)
+head(mm39_gtf_ensembl$transcript_id)
+
+
+mm39_gtf_gencode_transcript_id <- sapply(strsplit(mm39_gtf_gencode$transcript_id,split = ".",fixed=T),"[",1)
+mm39_gtf_gencode_transcript_id <- mm39_gtf_gencode_transcript_id[!duplicated(mm39_gtf_gencode_transcript_id)]
+
+mm39_gtf_ensembl_transcript_id <- mm39_gtf_ensembl$transcript_id
+mm39_gtf_ensembl_transcript_id <- mm39_gtf_ensembl_transcript_id[!duplicated(mm39_gtf_ensembl_transcript_id)]
+
+venn(list(mm39_gtf_gencode_transcript_id,mm39_gtf_ensembl_transcript_id))
+
+## chr modified 
+table(mm39_gtf_gencode[mm39_gtf_gencode$type=="gene",]@seqnames)
+table(mm39_gtf_ensembl[mm39_gtf_ensembl$type=="gene",]@seqnames)
+chr_name <- c(seq(1,19),"X","Y","MT")
+mm39_gtf_ensembl_chr <- mm39_gtf_ensembl[mm39_gtf_ensembl@seqnames %in% chr_name,]
+table(mm39_gtf_ensembl_chr[mm39_gtf_ensembl_chr$type=="gene",]@seqnames)
+tail(mm39_gtf_ensembl_chr[mm39_gtf_ensembl_chr$type=="gene",]@seqnames)
+
+mm39_gtf_ensembl_chr@seqnames <- Rle(factor(paste0("chr",mm39_gtf_ensembl_chr@seqnames),levels = paste0("chr",c(seq(1,19),"X","Y","MT"))))
+tail(mm39_gtf_ensembl_chr[mm39_gtf_ensembl_chr$type=="gene",]@seqnames)
+mm39_gtf_ensembl_chr@seqnames <- Rle(factor(ifelse(mm39_gtf_ensembl_chr@seqnames=="chrMT","chrM",mm39_gtf_ensembl_chr@seqnames),levels = paste0("chr",c(seq(1,19),"X","Y","M"))))
+tail(mm39_gtf_ensembl_chr[mm39_gtf_ensembl_chr$type=="gene",]@seqnames)
+
+export(mm39_gtf_ensembl_chr,"~/reference/annotation/mm39/Mus_musculus.GRCm39.108.chr.gtf","gtf")
+```
+
+```{bash}
+cd /disk/user_09/reference/annotation/mm39
+sed 's/three_prime_utr/3UTR/g' Mus_musculus.GRCm39.108.chr.gtf | sed 's/five_prime_utr/5UTR/g' > Mus_musculus.GRCm39.108.chr_UTR.gtf 
+```
+
+```{r basic pc_lnc}
+
+mm39_gtf_ensembl_chr <- import("~/reference/annotation/mm39/Mus_musculus.GRCm39.108.chr_UTR.gtf")
+
+table(mm39_gtf_ensembl_chr$type)
+
+mm39_gtf_ensembl_basic <- mm39_gtf_ensembl_chr[mm39_gtf_ensembl_chr$gene_id %in% mm39_gtf_gencode_gene_id,]
+mm39_gtf_ensembl_basic <- mm39_gtf_ensembl_basic[mm39_gtf_ensembl_basic$transcript_id %in% mm39_gtf_gencode_transcript_id,]
+
+export(mm39_gtf_ensembl_basic,"~/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.gtf","gtf")
+
+mm39_gtf_ensembl_basic_pc_lnc <- mm39_gtf_ensembl_basic[mm39_gtf_ensembl_basic$gene_biotype %in% c("lncRNA","protein_coding"),]
+export(mm39_gtf_ensembl_basic_pc_lnc,"~/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.pc_lnc.gtf","gtf")
+
+mm39_gtf_ensembl_basic_pc <- mm39_gtf_ensembl_basic[mm39_gtf_ensembl_basic$gene_biotype %in% c("protein_coding"),]
+export(mm39_gtf_ensembl_basic_pc,"~/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.pc.gtf","gtf")
+
+```
+
+### gencode
+
+```{r gtf_basic_pc_lncRNA}
+gtf_all <- import("~/reference/annotation/mm39/raw/gencode.vM29.annotation.gtf")
+gtf_basic <- import("~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf")
+
+gtf_all[gtf_all$type=="gene",]
+gtf_basic[gtf_basic$type=="gene",]
+
+table(gtf_all[gtf_all$type=="gene",]$gene_type)
+gtf_basic[gtf_basic$type=="gene",]
+
+gtf_all[gtf_all$type=="transcript",]
+gtf_basic[gtf_basic$type=="transcript",]
+
+table(gtf_all[gtf_all$type=="transcript",]$transcript_type)
+table(gtf_basic[gtf_basic$type=="transcript",]$transcript_type)
+
+gtf_basic_pc_lnc <- gtf_basic[gtf_basic$gene_type %in% c("lncRNA","protein_coding"),]
+
+table(gtf_basic_pc_lnc[gtf_basic_pc_lnc$type=="transcript",]$transcript_type)
+
+export(gtf_basic_pc_lnc,"~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf","gtf")
+
+```
+
