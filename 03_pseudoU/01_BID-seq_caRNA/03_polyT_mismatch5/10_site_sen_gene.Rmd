@@ -1,0 +1,449 @@
+---
+title: "10_site_sen_gene"
+author: "Tang Li"
+date: '2022-11-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggcor)
+library(ggprism)
+library(ggrepel)
+library(GenomicFeatures)
+library(Guitar)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(tidyverse)
+library(venn)
+library(Vennerable)
+library(VennDiagram)
+library(ggbeeswarm)
+library(reshape2)
+library(ttFunctions)
+
+#obj: ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/")
+```
+
+```{r pc_genename}
+
+sen_site <- read.delim("sen_site.txt")
+
+genename_pc <- sen_site_pc$gene_name
+genename_pc <- genename_pc[!duplicated(genename_pc)]
+dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/03_genename")
+
+tt_wt(genename_pc,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/03_genename/genename_pc.txt")
+
+```
+
+### gene region
+```{r pU strength}
+sen_site_pc <- sen_site[sen_site$region!="Intergenic",]
+
+sen_gene_pc <- aggregate(sen_site_pc[,c(seq(57,67,2))],by=list(gene_name=sen_site_pc$gene_name),FUN="sum")
+sen_gene_sitenum <- as.data.frame(table(sen_site_pc$gene_name))
+sen_gene_sitenum
+colnames(sen_gene_sitenum) <- c("gene_name","site_count")
+sen_gene_pc <- merge(sen_gene_sitenum,sen_gene_pc,by="gene_name")
+
+table(sen_gene_sitenum$site_count)
+
+sen_gene_pc$site_count_group <- ifelse(sen_gene_pc$site_count==1,"1",
+                                       ifelse(sen_gene_pc$site_count<=3,"2-3",">3"))
+
+dir.create("03_gene_strength")
+
+pdf("03_gene_strength/p01_site_count_group.pdf")
+ggplot(sen_gene_pc)+
+  geom_bar(aes(y=site_count_group,fill=site_count_group))+
+  theme_bar+
+  scale_fill_manual(values=c("#049e8a","#fbcc76","#ee5146"))
+dev.off()
+p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+
+sen_gene_pc$P12_mean_fraction <- apply(sen_gene_pc[,c(3:5)],1,mean)
+sen_gene_pc$P16_mean_fraction <- apply(sen_gene_pc[,c(6:8)],1,mean)
+
+pdf("03_gene_strength/p02_point_strength.pdf")
+ggplot(sen_gene_pc,aes(x=log2(P12_mean_fraction+1),y=log2(P16_mean_fraction+1)))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,5)+
+    ylim(0,5)+
+    labs(x=expression(log2~P12~fraction),y=expression(log2~P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+ggplot(sen_gene_pc,aes(x=P12_mean_fraction,y=P16_mean_fraction))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    # xlim(0,1)+
+    # ylim(0,1)+
+    labs(x=expression(P12~fraction),y=expression(P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+dev.off()
+
+sen_gene_pc$diff_minus <- sen_gene_pc$P16_mean_fraction - sen_gene_pc$P12_mean_fraction
+sen_gene_pc$diff_log <- log2((sen_gene_pc$P16_mean_fraction+0.001)/(sen_gene_pc$P12_mean_fraction+0.001))
+
+table(sen_gene_pc$diff_minus>0.2)
+sen_gene_pc$diff_minus_group <- ifelse(sen_gene_pc$diff_minus>0.2,"P16_high",ifelse(sen_gene_pc$diff_minus< -0.2 , "P12_high","NC"))
+table(sen_gene_pc$diff_minus_group)
+
+table(sen_gene_pc$diff_log>0.58)
+sen_gene_pc$diff_log_group <- ifelse(sen_gene_pc$diff_log>0.58,"P16_high",ifelse(sen_gene_pc$diff_log< -0.58 , "P12_high","NC"))
+table(sen_gene_pc$diff_log_group)
+
+dir.create("03_gene_strength/01_gene_group")
+write.table(sen_gene_pc,"03_gene_strength/01_gene_group/sen_gene_gr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+write.table(sen_gene_pc$gene_name,"03_gene_strength/01_gene_group/sen_gene_gr_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_minus_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="NC","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_minus_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_minus_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_minus_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_log_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="NC","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_log_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_pc[sen_gene_pc$diff_log_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/sen_gene_gr_log_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+```{r gene GO}
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_P16_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_P16_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_P12_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_P12_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_NC_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_NC",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+```
+
+### intron
+```{r pU strength}
+sen_site_intron <- sen_site[sen_site$region=="intron",]
+
+sen_gene_intron <- aggregate(sen_site_intron[,c(seq(57,67,2))],by=list(gene_name=sen_site_intron$gene_name),FUN="sum")
+sen_gene_sitenum <- as.data.frame(table(sen_site_intron$gene_name))
+sen_gene_sitenum
+colnames(sen_gene_sitenum) <- c("gene_name","site_count")
+sen_gene_intron <- merge(sen_gene_sitenum,sen_gene_intron,by="gene_name")
+
+table(sen_gene_sitenum$site_count)
+
+sen_gene_intron$site_count_group <- ifelse(sen_gene_intron$site_count==1,"1",
+                                       ifelse(sen_gene_intron$site_count<=3,"2-3",">3"))
+
+dir.create("03_gene_strength")
+
+pdf("03_gene_strength/p01_site_count_group_intron.pdf")
+ggplot(sen_gene_intron)+
+  geom_bar(aes(y=site_count_group,fill=site_count_group))+
+  theme_bar+
+  scale_fill_manual(values=c("#049e8a","#fbcc76","#ee5146"))
+dev.off()
+p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+
+sen_gene_intron$P12_mean_fraction <- apply(sen_gene_intron[,c(3:5)],1,mean)
+sen_gene_intron$P16_mean_fraction <- apply(sen_gene_intron[,c(6:8)],1,mean)
+
+pdf("03_gene_strength/p02_point_intron_strength.pdf")
+ggplot(sen_gene_intron,aes(x=log2(P12_mean_fraction+1),y=log2(P16_mean_fraction+1)))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,5)+
+    ylim(0,5)+
+    labs(x=expression(log2~P12~fraction),y=expression(log2~P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+ggplot(sen_gene_intron,aes(x=P12_mean_fraction,y=P16_mean_fraction))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    # xlim(0,1)+
+    # ylim(0,1)+
+    labs(x=expression(P12~fraction),y=expression(P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+dev.off()
+
+sen_gene_intron$diff_minus <- sen_gene_intron$P16_mean_fraction - sen_gene_intron$P12_mean_fraction
+sen_gene_intron$diff_log <- log2((sen_gene_intron$P16_mean_fraction+0.001)/(sen_gene_intron$P12_mean_fraction+0.001))
+
+table(sen_gene_intron$diff_minus>0.2)
+sen_gene_intron$diff_minus_group <- ifelse(sen_gene_intron$diff_minus>0.2,"P16_high",ifelse(sen_gene_intron$diff_minus< -0.2 , "P12_high","NC"))
+table(sen_gene_intron$diff_minus_group)
+
+table(sen_gene_intron$diff_log>0.58)
+sen_gene_intron$diff_log_group <- ifelse(sen_gene_intron$diff_log>0.58,"P16_high",ifelse(sen_gene_intron$diff_log< -0.58 , "P12_high","NC"))
+table(sen_gene_intron$diff_log_group)
+
+dir.create("03_gene_strength/01_gene_group/02_intron")
+write.table(sen_gene_intron,"03_gene_strength/01_gene_group/02_intron/sen_gene_gr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+write.table(sen_gene_intron$gene_name,"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+```{r gene GO}
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_P16_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_P16_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_P12_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_P12_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/sen_gene_gr_minus_NC_genename.txt")$V1,filedir="03_gene_strength/01_gene_group",groupname="minus_NC",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+```
+
+### intron
+```{r pU strength}
+sen_site_intron <- sen_site[sen_site$region=="intron",]
+
+sen_gene_intron <- aggregate(sen_site_intron[,c(seq(57,67,2))],by=list(gene_name=sen_site_intron$gene_name),FUN="sum")
+sen_gene_sitenum <- as.data.frame(table(sen_site_intron$gene_name))
+sen_gene_sitenum
+colnames(sen_gene_sitenum) <- c("gene_name","site_count")
+sen_gene_intron <- merge(sen_gene_sitenum,sen_gene_intron,by="gene_name")
+
+table(sen_gene_sitenum$site_count)
+
+sen_gene_intron$site_count_group <- ifelse(sen_gene_intron$site_count==1,"1",
+                                       ifelse(sen_gene_intron$site_count<=3,"2-3",">3"))
+
+dir.create("03_gene_strength")
+
+pdf("03_gene_strength/p01_site_count_group_intron.pdf")
+ggplot(sen_gene_intron)+
+  geom_bar(aes(y=site_count_group,fill=site_count_group))+
+  theme_bar+
+  scale_fill_manual(values=c("#049e8a","#fbcc76","#ee5146"))
+dev.off()
+p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+
+sen_gene_intron$P12_mean_fraction <- apply(sen_gene_intron[,c(3:5)],1,mean)
+sen_gene_intron$P16_mean_fraction <- apply(sen_gene_intron[,c(6:8)],1,mean)
+
+pdf("03_gene_strength/p02_point_intron_strength.pdf")
+ggplot(sen_gene_intron,aes(x=log2(P12_mean_fraction+1),y=log2(P16_mean_fraction+1)))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,5)+
+    ylim(0,5)+
+    labs(x=expression(log2~P12~fraction),y=expression(log2~P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+ggplot(sen_gene_intron,aes(x=P12_mean_fraction,y=P16_mean_fraction))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    # xlim(0,1)+
+    # ylim(0,1)+
+    labs(x=expression(P12~fraction),y=expression(P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+dev.off()
+
+sen_gene_intron$diff_minus <- sen_gene_intron$P16_mean_fraction - sen_gene_intron$P12_mean_fraction
+sen_gene_intron$diff_log <- log2((sen_gene_intron$P16_mean_fraction+0.001)/(sen_gene_intron$P12_mean_fraction+0.001))
+
+table(sen_gene_intron$diff_minus>0.2)
+sen_gene_intron$diff_minus_group <- ifelse(sen_gene_intron$diff_minus>0.2,"P16_high",ifelse(sen_gene_intron$diff_minus< -0.2 , "P12_high","NC"))
+table(sen_gene_intron$diff_minus_group)
+
+table(sen_gene_intron$diff_log>0.58)
+sen_gene_intron$diff_log_group <- ifelse(sen_gene_intron$diff_log>0.58,"P16_high",ifelse(sen_gene_intron$diff_log< -0.58 , "P12_high","NC"))
+table(sen_gene_intron$diff_log_group)
+
+dir.create("03_gene_strength/01_gene_group/02_intron")
+write.table(sen_gene_intron,"03_gene_strength/01_gene_group/02_intron/sen_gene_gr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+write.table(sen_gene_intron$gene_name,"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_minus_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_intron[sen_gene_intron$diff_log_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_intron/sen_gene_gr_log_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+```{r gene GO}
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P16_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_intron",groupname="minus_P16_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_P12_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_intron",groupname="minus_P12_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_intron/sen_gene_gr_minus_NC_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_intron",groupname="minus_NC",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+```
+
+### exon
+```{r pU strength}
+sen_site_exon <- sen_site[!sen_site$region %in% c("intron","Intergenic"),]
+
+sen_gene_exon <- aggregate(sen_site_exon[,c(seq(57,67,2))],by=list(gene_name=sen_site_exon$gene_name),FUN="sum")
+sen_gene_sitenum <- as.data.frame(table(sen_site_exon$gene_name))
+sen_gene_sitenum
+colnames(sen_gene_sitenum) <- c("gene_name","site_count")
+sen_gene_exon <- merge(sen_gene_sitenum,sen_gene_exon,by="gene_name")
+
+table(sen_gene_sitenum$site_count)
+
+sen_gene_exon$site_count_group <- ifelse(sen_gene_exon$site_count==1,"1",
+                                       ifelse(sen_gene_exon$site_count<=3,"2-3",">3"))
+
+dir.create("03_gene_strength")
+
+pdf("03_gene_strength/p01_site_count_group_exon.pdf")
+ggplot(sen_gene_exon)+
+  geom_bar(aes(y=site_count_group,fill=site_count_group))+
+  theme_bar+
+  scale_fill_manual(values=c("#049e8a","#fbcc76","#ee5146"))
+dev.off()
+p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+
+sen_gene_exon$P12_mean_fraction <- apply(sen_gene_exon[,c(3:5)],1,mean)
+sen_gene_exon$P16_mean_fraction <- apply(sen_gene_exon[,c(6:8)],1,mean)
+
+pdf("03_gene_strength/p02_point_exon_strength.pdf")
+ggplot(sen_gene_exon,aes(x=log2(P12_mean_fraction+1),y=log2(P16_mean_fraction+1)))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,5)+
+    ylim(0,5)+
+    labs(x=expression(log2~P12~fraction),y=expression(log2~P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+ggplot(sen_gene_exon,aes(x=P12_mean_fraction,y=P16_mean_fraction))+
+  geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    # xlim(0,1)+
+    # ylim(0,1)+
+    labs(x=expression(P12~fraction),y=expression(P16~fraction))+#标题
+    theme_bar+
+    ggtitle(expression(pU~strength))+
+    coord_fixed()
+
+dev.off()
+
+sen_gene_exon$diff_minus <- sen_gene_exon$P16_mean_fraction - sen_gene_exon$P12_mean_fraction
+sen_gene_exon$diff_log <- log2((sen_gene_exon$P16_mean_fraction+0.001)/(sen_gene_exon$P12_mean_fraction+0.001))
+
+table(sen_gene_exon$diff_minus>0.2)
+sen_gene_exon$diff_minus_group <- ifelse(sen_gene_exon$diff_minus>0.2,"P16_high",ifelse(sen_gene_exon$diff_minus< -0.2 , "P12_high","NC"))
+table(sen_gene_exon$diff_minus_group)
+
+table(sen_gene_exon$diff_log>0.58)
+sen_gene_exon$diff_log_group <- ifelse(sen_gene_exon$diff_log>0.58,"P16_high",ifelse(sen_gene_exon$diff_log< -0.58 , "P12_high","NC"))
+table(sen_gene_exon$diff_log_group)
+
+dir.create("03_gene_strength/01_gene_group/02_exon")
+write.table(sen_gene_exon,"03_gene_strength/01_gene_group/02_exon/sen_gene_gr.txt",quote = F,row.names = F,col.names = T,sep = '\t')
+
+write.table(sen_gene_exon$gene_name,"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_exon[sen_gene_exon$diff_minus_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_exon[sen_gene_exon$diff_minus_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_exon[sen_gene_exon$diff_minus_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+write.table(sen_gene_exon[sen_gene_exon$diff_log_group=="P16_high","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_log_P16_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_exon[sen_gene_exon$diff_log_group=="NC","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_log_NC_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_gene_exon[sen_gene_exon$diff_log_group=="P12_high","gene_name"],"03_gene_strength/01_gene_group/02_exon/sen_gene_gr_log_P12_high_genename.txt",quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+```{r gene GO}
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_P16_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_exon",groupname="minus_P16_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_P12_high_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_exon",groupname="minus_P12_high",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+tt_enrichGO(genelist=read.table("03_gene_strength/01_gene_group/02_exon/sen_gene_gr_minus_NC_genename.txt")$V1,filedir="03_gene_strength/01_gene_group/02_exon",groupname="minus_NC",OrgDb = org.Hs.eg.db::org.Hs.eg.db,ont = "all",
+                    pAdjustMethod = "BH",pvalueCutoff = 0.05,qvalueCutoff = 0.1,
+                    height=NULL,width=NULL)
+
+```

@@ -1,0 +1,351 @@
+---
+title: "09_dapars"
+author: "Tang Li"
+date: '2023-03-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(VennDiagram)
+library(ttFunctions)
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/01_mRNA_expression/04_p14_siNudt21_siM3/09_dapars"))
+```
+
+```{bash bam2wig}
+
+cd ~/Data/01_TC1/01_mRNA_expression/04_p14_siNudt21_siM3
+conda activate bedtools
+mkdir 09_dapars
+mkdir 09_dapars/00_wig
+
+for group in {P14_siNC,P14_siM3,P14_siNudt21}
+do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/${group}.bam -bga -split -trackline \
+            > 09_dapars/00_wig/${group}.wig &
+done
+
+for group in {P21_siNC,P21_siVirma}
+do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/${group}.bam -bga -split -trackline \
+            > 09_dapars/00_wig/${group}.wig &
+done
+
+for group in {p0,p5,p10,rp2}
+do
+  for rep in {rep1,rep2}
+  do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/user_08_TC1/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/${group}_input_${rep}.bam -bga -split -trackline \
+            > 09_dapars/00_wig/${group}_${rep}.wig &
+  done
+done
+
+for group in {p0_UT,p0_M3IN,p,p10,rp2}
+do
+  for rep in {rep1,rep2}
+  do
+        bedtools genomecov -ibam /disk/user_09/Data/01_TC1/11_TC1_M3inhibitor/05_hisat2_mapping_sensitive/03_bam_merge/p0_UT_rep1.bam -bga -split -trackline \
+            > 09_dapars/00_wig/${group}_${rep}.wig &
+  done
+done
+```
+
+编辑configure文件
+
+```{bash dapars multi sample}
+for i in `cat configure/chrList.txt`
+do
+python /disk/user_09/software/DaPars2-master/src/Dapars2_Multi_Sample.py \
+    configure/Dapars2_configure.txt  ${i} &
+done
+```
+
+```{bash chr2all}
+for i in {1..19}
+do
+  sed -i '1d' Dapars2_test_chr${i}/Dapars2_result_temp.chr${i}.txt
+  cat Dapars2_test_chr${i}/Dapars2_result_temp.chr${i}.txt >> \
+    Dapars2_test_chrX/Dapars2_result_temp.chrX.txt
+done
+
+sed -i '1d' Dapars2_test_chrY/Dapars2_result_temp.chrY.txt
+
+cat Dapars2_test_chrY/Dapars2_result_temp.chrY.txt >> \
+  Dapars2_test_chrX/Dapars2_result_temp.chrX.txt
+  
+cp Dapars2_test_chrX/Dapars2_result_temp.chrX.txt \
+  Dapars2_result.txt
+
+rm Dapars2_test_chr* -fr
+```
+
+```{r dapars result coverage30}
+
+dapars2_P14_P21 <- as_tibble(read.table("Dapars2_result.txt",header = TRUE))
+
+colnames(dapars2_P14_P21) <- c("Gene","fit_value",
+                                  "Predicted_Proximal_APA","Loci",
+                                  "P14_siNC_PDUI","P14_siMettl3_PDUI",
+                                  "P14_siNudt21_PDUI","P21_siNC_PDUI",
+                                  "P21_siVirma_PDUI")
+
+write.table(dapars2_P14_P21,"DaPars2_P14_P21.txt",quote = FALSE,sep="\t",row.names = FALSE)
+
+```
+
+```{r P14 volcano coverage30}
+volcano_color <- c(UP = alpha("#C01623", 0.7),NC = alpha("DimGray", 0.2),DOWN = alpha("#4431A5", 0.7))
+
+dir.create("01_P14_0.2_0.58")
+## 
+sample_df <- c(1,5,6,7,8,9)
+names(sample_df) <- c("name","P14_siNC","P14_siMettl3","P14_siNudt21","P21_siNC","P21_siVirma")
+
+
+volcanoPlot <- function(stage1,stage2){
+  stage=sample_df[c(stage1,stage2)]
+  dapars <- select(dapars2_P14_P21,c("Gene",all_of(stage)))
+  dapars <- na.omit(dapars)
+  dapars$filter <- "NC"
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,2]/dapars[,3])>0.58)] <- "UP"
+  
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,3]/dapars[,2])>0.58)] <- "DOWN"
+  
+  
+  write.table(dapars,paste0("01_P14_0.2_0.58/DaPars2_",stage1,stage2,".txt"),quote = FALSE,sep="\t",row.names = FALSE)
+  table(dapars$filter)
+  
+  ggplot(dapars)+
+    geom_point(aes(x=get(stage2),y=get(stage1),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR ",stage1,"_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR ",stage2,"_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in ",stage1)) + 
+    xlab(paste0("Mean PDUIs of genes in ",stage2))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+  ggsave(paste0("01_P14_0.2_0.58/dapars_",stage1,stage2,"_volcano.pdf"),width = 5.5,height = 6)
+  return(dapars)
+}
+
+dapars_P14_siNCP14_siMettl3 <- volcanoPlot("P14_siNC","P14_siMettl3")
+dapars_P14_siNCP14_siNudt21 <- volcanoPlot("P14_siNC","P14_siNudt21")
+dapars_P21_siNCP21_siVirma <- volcanoPlot("P21_siNC","P21_siVirma")
+
+
+library(VennDiagram)
+dir.create("01_venn_diagram_0.2_0.58_mean_omitNA")
+venn.diagram(x=list(p0_caRNA_longer=dapars_caRNA_mRNA_p0$Gene[which(dapars_caRNA_mRNA_p0$filter=="UP")],
+                    p5_caRNA_longer=dapars_caRNA_mRNA_p5$Gene[which(dapars_caRNA_mRNA_p5$filter=="UP")],
+                    p10_caRNA_longer=dapars_caRNA_mRNA_p10$Gene[which(dapars_caRNA_mRNA_p10$filter=="UP")],
+                    rp2_caRNA_longer=dapars_caRNA_mRNA_rp2$Gene[which(dapars_caRNA_mRNA_rp2$filter=="UP")]),
+             "01_venn_diagram_0.2_0.58_mean_omitNA/caRNA_longer.png",imagetype="png",
+             cat.just=list(c(0,0),c(0,0),c(0,0),c(0,0)))
+
+
+
+venn.diagram(x=list(p0p5_shorter=dapars_caRNA_p0p5$Gene[which(dapars_caRNA_p0p5$filter=="UP")],
+                    p5rp2_longer=dapars_caRNA_p5rp2$Gene[which(dapars_caRNA_p5rp2$filter=="DOWN")]),
+             "01_venn_diagram_0.2_0.58_mean_omitNA/p0p5rp2_caRNA_shorter_longer.png",imagetype="png",
+             fill=c("#EECE13","#B210FF"),col=c("#EECE13","#B210FF"),width=2000,height = 2000,
+             cat.default.pos='text',cat.just=list(c(0.3,-0.5),c(0.8,-0.5)))
+
+```
+
+用dapars试试
+```{bash dapars}
+python /disk/user_09/software/dapars-master/src/DaPars_main.py configure/Dapars2_configure.txt
+```
+
+```{r dapars result}
+dapars_siVirma <- read.table("02_dapars_30_siVirma/DaPars_Test_data/DaPars_Test_data_All_Prediction_Results.txt",
+                             header = T)
+
+
+
+
+```
+
+```{r dapars result coverage20}
+
+dapars2_P14_P21 <- as_tibble(read.table("03_dapars2_20/Dapars2_result.txt",header = TRUE))
+
+colnames(dapars2_P14_P21) <- c("Gene","fit_value",
+                                  "Predicted_Proximal_APA","Loci",
+                                  "P14_siNC_rep1_PDUI","P14_siNC_rep2_PDUI",
+                                  "P14_siMettl3_rep1_PDUI","P14_siMettl3_rep2_PDUI",
+                                  "P14_siNudt21_rep1_PDUI","P14_siNudt21_rep2_PDUI",
+                                  "P21_siNC_rep1_PDUI","P21_siNC_rep2_PDUI",
+                                  "P21_siVirma_rep1_PDUI","P21_siVirma_rep2_PDUI")
+
+write.table(dapars2_P14_P21,"03_dapars2_20/DaPars2_P14_P21.txt",quote = FALSE,sep="\t",row.names = FALSE)
+
+dapars2_mean  <- tibble(Gene=dapars2_P14_P21$Gene,
+                        P14_siNC=apply(dapars2_P14_P21[,c("P14_siNC_rep1_PDUI","P14_siNC_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        P14_siMettl3=apply(dapars2_P14_P21[,c("P14_siMettl3_rep1_PDUI","P14_siMettl3_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        P14_siNudt21=apply(dapars2_P14_P21[,c("P14_siNudt21_rep1_PDUI","P14_siNudt21_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        P21_siNC=apply(dapars2_P14_P21[,c("P21_siNC_rep1_PDUI","P21_siNC_rep2_PDUI")],1,mean,na.rm=TRUE),
+                        P21_siVirma=apply(dapars2_P14_P21[,c("P21_siVirma_rep1_PDUI","P21_siVirma_rep2_PDUI")],1,mean,na.rm=TRUE)) 
+
+write.table(dapars2_mean,"03_dapars2_20/DaPars2_P14_P21_mean.txt",quote = FALSE,sep="\t",row.names = FALSE)
+```
+
+```{r P14 volcano coverage20}
+volcano_color <- c(UP = alpha("#C01623", 0.7),NC = alpha("DimGray", 0.2),DOWN = alpha("#4431A5", 0.7))
+
+dapars2_mean_P14 <- dapars2_mean[,1:4]
+##### mean_omitNA
+
+dir.create("03_dapars2_20/01_P14_0.2_0.58_mean")
+## 
+sample_df <- c(1,2,3,4,5,6)
+names(sample_df) <- c("name","P14_siNC","P14_siMettl3","P14_siNudt21","P21_siNC","P21_siVirma")
+
+
+volcanoPlot <- function(stage1,stage2){
+  stage=sample_df[c(stage1,stage2)]
+  dapars <- select(dapars2_mean,c("Gene",all_of(stage)))
+  dapars <- na.omit(dapars)
+  dapars$filter <- "NC"
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,2]/dapars[,3])>0.58)] <- "UP"
+  
+  dapars$filter[which(abs(dapars[,2]-dapars[,3])>0.2 & log2(dapars[,3]/dapars[,2])>0.58)] <- "DOWN"
+  
+  
+  write.table(dapars,paste0("03_dapars2_20/01_P14_0.2_0.58_mean/DaPars2_",stage1,stage2,".txt"),quote = FALSE,sep="\t",row.names = FALSE)
+  table(dapars$filter)
+  
+  ggplot(dapars)+
+    geom_point(aes(x=get(stage2),y=get(stage1),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR ",stage1,"_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR ",stage2,"_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in ",stage1)) + 
+    xlab(paste0("Mean PDUIs of genes in ",stage2))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+  ggsave(paste0("03_dapars2_20/01_P14_0.2_0.58_mean/dapars_",stage1,stage2,"_volcano.pdf"),width = 5.5,height = 6)
+  return(dapars)
+}
+
+dapars_P14_siNCP14_siMettl3 <- volcanoPlot("P14_siNC","P14_siMettl3")
+dapars_P14_siNCP14_siNudt21 <- volcanoPlot("P14_siNC","P14_siNudt21")
+dapars_P21_siNCP21_siVirma <- volcanoPlot("P21_siNC","P21_siVirma")
+```
+
+```{r venn coverage 20}
+
+
+dir.create("03_dapars2_20/01_venn_diagram_0.2_0.58")
+venn.diagram(x=list(P14_siMettl3_longer=dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="UP")],
+                    P14_siNudt21_longer=dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="UP")],
+                    P14_siMettl3_short=dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="DOWN")],
+                    P14_siNudt21_short=dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="DOWN")]),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21.png",imagetype="png",
+             cat.just=list(c(0,0),c(0,0),c(0,0),c(0,0)))
+
+venn.diagram(x=list(P14_siMettl3_short=dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="UP")],
+                    P14_siNudt21_short=dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="UP")]),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_short.png",imagetype="png",
+             fill=c("#EECE13","#B210FF"),col=c("#EECE13","#B210FF"),width=2000,height = 2000,
+             cat.just=list(c(0.8,-0.5),c(0.3,-0.5)))
+
+venn.diagram(x=list(P14_siMettl3_long=dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="DOWN")],
+                    P14_siNudt21_long=dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="DOWN")]),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_long.png",imagetype="png",
+             fill=c("#EECE13","#B210FF"),col=c("#EECE13","#B210FF"),width=2000,height = 2000,
+             cat.just=list(c(0.3,-0.5),c(0.8,-0.5)))
+
+P14_siMettl3_short <- sapply(strsplit(dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="UP")],"|",fixed=T),"[",2)
+tt_wt(P14_siMettl3_short,"03_dapars2_20/01_P14_0.2_0.58_mean/P14_siMettl3_short")
+
+P14_siMettl3_long <- sapply(strsplit(dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="DOWN")],"|",fixed=T),"[",2)
+tt_wt(P14_siMettl3_long,"03_dapars2_20/01_P14_0.2_0.58_mean/P14_siMettl3_long")
+
+P14_siNudt21_short <- sapply(strsplit(dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="UP")],"|",fixed=T),"[",2)
+tt_wt(P14_siMettl3_short,"03_dapars2_20/01_P14_0.2_0.58_mean/P14_siNudt21_short")
+
+P14_siNudt21_long <- sapply(strsplit(dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="DOWN")],"|",fixed=T),"[",2)
+tt_wt(P14_siNudt21_long,"03_dapars2_20/01_P14_0.2_0.58_mean/P14_siNudt21_long")
+
+tt_wt(intersect(P14_siMettl3_long,P14_siNudt21_long),"03_dapars2_20/01_P14_0.2_0.58_mean/P14_siNudt21_siMettl3_long")
+
+tt_enrichGO(intersect(P14_siMettl3_long,P14_siNudt21_long),filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siMettl3_siNudt21_long")
+
+tt_enrichGO(P14_siMettl3_long,filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siMettl3_long",width = 10)
+
+tt_enrichGO(P14_siNudt21_long,filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siNudt21_long",width = 10)
+
+tt_enrichGO(intersect(P14_siMettl3_short,P14_siNudt21_short),filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siMettl3_siNudt21_short")
+
+tt_enrichGO(P14_siMettl3_short,filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siMettl3_short")
+
+tt_enrichGO(P14_siNudt21_short,filedir = "03_dapars2_20/01_P14_0.2_0.58_mean/",groupname = "dapars_siNudt21_short")
+
+venn.diagram(x=list(P14_siMettl3_long=dapars_P14_siNCP14_siMettl3$Gene[which(dapars_P14_siNCP14_siMettl3$filter=="DOWN")],
+                    P14_siNudt21_long=dapars_P14_siNCP14_siNudt21$Gene[which(dapars_P14_siNCP14_siNudt21$filter=="DOWN")]),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_long.png",imagetype="png",
+             fill=c("#EECE13","#B210FF"),col=c("#EECE13","#B210FF"),width=2000,height = 2000,
+             cat.just=list(c(0.3,-0.5),c(0.8,-0.5)))
+
+```
+
+```{r dapars p0p10}
+dapars_p0_p10 <- read.table("../../03_TC1_caRNA/12_dapars/91_group_test/dapars2_caRNA_new/group_table_0.2_0.58/DaPars2_caRNA_p0p10.txt",header = T)
+
+p0_p10_short <- sapply(strsplit(dapars_p0_p10$Gene[which(dapars_p0_p10$filter=="UP")],"|",fixed=T),"[",2)
+
+venn.diagram(x=list(P14_siMettl3_long=P14_siMettl3_long,
+                    P14_siNudt21_long=P14_siNudt21_long,
+                    p0_p10_short=p0_p10_short),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_p0p10_short_caRNA_new2.png",imagetype="png",
+             cat.just=list(c(0,0),c(0,0),c(0,0)))
+
+p0_p10_long <- sapply(strsplit(dapars_p0_p10$Gene[which(dapars_p0_p10$filter=="DOWN")],"|",fixed=T),"[",2)
+
+venn.diagram(x=list(P14_siMettl3_long=P14_siMettl3_long,
+                    P14_siNudt21_long=P14_siNudt21_long,
+                    p0_p10_long=p0_p10_long),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_p0p10_long_caRNA_new2.png",imagetype="png",
+             cat.just=list(c(0,0),c(0,0),c(0,0)))
+
+termination_gene <- read.table("/disk/user_08/Data/TC1-planB/32_mRNA_vs_caRNA_ratio/file/genename/E_1512_genename.txt")$V1
+venn.diagram(x=list(P14_siMettl3_long=P14_siMettl3_long,
+                    P14_siNudt21_long=P14_siNudt21_long,
+                    termination_gene=termination_gene),
+             "03_dapars2_20/01_venn_diagram_0.2_0.58/P14_siMettl3_siNudt21_long_termination3.png",imagetype="png",
+             cat.just=list(c(0,0),c(0,0),c(0,0)))
+```

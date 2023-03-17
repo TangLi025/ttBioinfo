@@ -61,9 +61,10 @@ site_info_filter <- site_info_filter[input_del_filter,]
 ```{r site filter for every sample}
 # dir.create("07_site_filter_group")
 # dir.create("07_site_filter_group/01_sen")
-dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5")
+# dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5")
+dir.create("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10")
 #  function "site_filter_group"
-site_filter_sample <- function(site_info_filter,sample,del_count=5,del_ratio=0.03,del_fraction=0.05){
+site_filter_sample <- function(site_info_filter,sample,del_count=3,del_ratio=0.05,del_fraction=0.1){
   filter_del_ratio <- site_info_filter[,paste0(sample,"_del_ratio")]>=del_ratio
   
   filter_del_count <- site_info_filter[,paste0(sample,"_del_count")] >=del_count
@@ -93,13 +94,13 @@ venn_sen <- Venn(list(P12=P12_conf_name,P16=P16_conf_name))
 P12_site <- site_info_filter[P12_conf_name,]
 P16_site <- site_info_filter[P16_conf_name,]
 
-pdf("07_site_filter_group/01_sen/02_venn_sen_input5_count5_ratio3_fraction5.pdf")
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/02_venn.pdf")
 plot(venn_P12) 
 plot(venn_P16) 
 plot(venn_sen)
 dev.off()
 
-pdf("07_site_filter_group/01_sen/03_sen_col_heatmap_input5_count5_ratio3_fraction5.pdf")
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/03_col_heatmap.pdf")
 quickcor(site_info[P12_conf_name,
                    c("P12_BS_1_del_fraction","P12_BS_2_del_fraction","P12_BS_3_del_fraction")],
          circular=F,cor.test = TRUE,mapping=aes(fill=r))+
@@ -122,7 +123,7 @@ theme_bar <- theme_prism(palette = "floral",
                 axis_text_angle = 45)+ # 可选值有 0，45，90，270
     theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
 
-pdf("07_site_filter_group/01_sen/04_sen_point_line_input5_count5_ratio3_fraction5_rep3.pdf",width = 5)
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/04_point_line_rep3.pdf",width = 5)
   p <- ggplot(site_info[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
     geom_point(col="#ff624b")+
     geom_abline(slope=1,intercept = 0)+
@@ -198,7 +199,7 @@ sen_conf_name <- c(venn_sen@IntersectionSets$`10`,venn_sen@IntersectionSets$`01`
 
 sen_site <- site_info_filter[sen_conf_name,]
 
-pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/07_pU_level_region.pdf",width = 6)
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/05_pU_level_region.pdf",width = 6)
 temp <- as.data.frame(table(sen_site$diff_frac_group))
 temp$Var1 <- factor(temp$Var1,levels = c("P12_high","P16_high","NC"))
 ggplot(temp,aes(x = '',y = Freq,fill = Var1)) +
@@ -208,7 +209,7 @@ ggplot(temp,aes(x = '',y = Freq,fill = Var1)) +
   theme(legend.position = c(0.15,0.9),legend.text = element_text(size=14),legend.title = element_text(size=14),
         strip.text.x = element_text(size= 30)) +
   coord_polar(theta = 'y') +
-  scale_fill_brewer(palette = 'Set2',name = 'Total=978')
+  scale_fill_brewer(palette = 'Set2',name = paste0('Total=',dim(sen_site)[1]))
 
 temp <- as.data.frame(table(sen_site$region))
 temp$label1 <- ifelse(temp$Var1 %in% c("intron","Intergenic"),temp$Freq,"")
@@ -234,7 +235,7 @@ p <- ggplot(sen_site,aes(x=P12_mean_frac,y=P16_mean_frac))+
   print(p)
 dev.off()
 
-write.table(sen_site,"07_site_filter_group/01_sen/sen_site_input5_count5_ratio3_fraction5.txt",quote = F,row.names = T,col.names = T,sep = '\t')
+write.table(sen_site,"07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/sen_site.txt",quote = F,row.names = T,col.names = T,sep = '\t')
 
 ```
 
@@ -249,24 +250,26 @@ sen_site_melt$frac_group <- factor(ifelse(sen_site_melt$mean_fraction<0.1,"fract
                                           ifelse(sen_site_melt$mean_fraction<0.5,"fraction 20%-50%","fraction >50%"))),
                                    levels=c("fraction >50%","fraction 20%-50%","fraction 10%-20%","fraction <10%"))
 
-mean(sen_site_melt[sen_site_melt$group=="P12","mean_fraction"])
-mean(sen_site_melt[sen_site_melt$group=="P16","mean_fraction"])
+P12_frac_mean <- mean(sen_site_melt[sen_site_melt$group=="P12","mean_fraction"])
+P16_frac_mean <- mean(sen_site_melt[sen_site_melt$group=="P16","mean_fraction"])
 
-pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/05_mean_fraction_beeswarm.pdf")
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/06_mean_fraction_beeswarm.pdf")
 ggplot(sen_site_melt, aes(x = mean_fraction, y = group,col=group,fill=group,shape=group)) +
-  geom_quasirandom(alpha=0.7,size=2,groupOnX=FALSE,varwidth=T) +
+  geom_quasirandom(alpha=0.7,size=2,groupOnX=FALSE,varwidth=T,show.legend = F) +
   scale_color_manual(values=c("P12"="#060503","P16"="#060503"))+
   scale_fill_manual(values=c("P12"="#fbcc76","P16"="#fbcc76"))+
   scale_shape_manual(values=c("P12"=21,"P16"=21))+
   annotate("segment", x = 0.1, xend = 0.1, y = 0.5, yend = 2.5,size = 2,)+
   annotate("segment", x = 0.5, xend = 0.5, y = 0.5, yend = 2.5,size = 2,)+
-  annotate("segment", x = 0.321, xend = 0.321, y = 0.7, yend = 1.3,size = 2,col="#ff624b")+
-  annotate("segment", x = 0.356, xend = 0.356, y = 1.7, yend = 2.3,size = 2,col="#ff624b")+
-  #geom_vline(xintercept = 0.1,)+
-  #geom_vline(xintercept = 0.5)+
+  annotate("text", x = 0.2, y = 2.5, label=sprintf("%0.1f%%",10),size = 6)+
+  annotate("text", x = 0.6, y = 2.5, label=sprintf("%0.1f%%",50),size = 6)+
+  annotate("segment", x = P12_frac_mean, xend = P12_frac_mean, y = 0.7, yend = 1.3,size = 2,col="#ff624b")+
+  annotate("segment", x = P16_frac_mean, xend = P16_frac_mean, y = 1.7, yend = 2.3,size = 2,col="#ff624b")+
+  annotate("text", x = P12_frac_mean, y = 0.6, label=sprintf("%0.1f%%",P12_frac_mean*100),size = 6,col="#ff624b")+
+  annotate("text", x = P16_frac_mean, y = 2.4, label=sprintf("%0.1f%%",P16_frac_mean*100),size = 6,col="#ff624b")+
   theme_bar+
+  theme(plot.margin = margin(t=2,r=0.5,b=2,l=0.5,unit = "cm"))+
   labs(x=expression(pU~fraction),y=NULL)
-  
 dev.off()
 
 sen_site_num <- rbind(P12=table(sen_site_melt[sen_site_melt$group=="P12",3]),
@@ -275,7 +278,7 @@ sen_site_num_melt <- melt(sen_site_num)
 colnames(sen_site_num_melt) <- c("group","frac_group","num")
 sen_site_num_melt$frac_group <- factor(sen_site_num_melt$frac_group,levels=c("fraction >50%","fraction 20%-50%","fraction 10%-20%","fraction <10%"))
 
-pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/06_mean_fraction_barplot.pdf")
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/07_mean_fraction_barplot.pdf")
 ggplot(sen_site_num_melt, aes(x = group,y=num)) +
   geom_col(aes(fill=frac_group)) +
   scale_fill_manual(values=c("#ee5146","#fbcc76","#049e8a","#494949"))+
@@ -320,15 +323,15 @@ frequent_motif_P16_high <- merge(motif_count,frequent_motif_P16_high)
 frequent_motif_P16_high$freq_percent <- frequent_motif_P16_high$freq/(dim(P16_high_site)[1])
 
 ### frequent_motif P16_other
-P16_high_other_site <- sen_site[!sen_site$diff_frac_group=="P16_high",]
-frequent_motif_P16_other <- aggregate(P16_high_other_site[,c(72,73)],by=list(c(P16_high_other_site$motif)),FUN="mean")
+P16_other_site <- sen_site[!sen_site$diff_frac_group=="P16_high",]
+frequent_motif_P16_other <- aggregate(P16_other_site[,c(72,73)],by=list(c(P16_other_site$motif)),FUN="mean")
 colnames(frequent_motif_P16_other) <- c("motif","fraction_P12","fraction_P16")
 
-motif_count <- as.data.frame(table(c(P16_high_other_site$motif)))
+motif_count <- as.data.frame(table(c(P16_other_site$motif)))
 colnames(motif_count) <- c("motif","freq")
 
 frequent_motif_P16_other <- merge(motif_count,frequent_motif_P16_other)
-frequent_motif_P16_other$freq_percent <- frequent_motif_P16_high_other$freq/(dim(P16_high_other_site)[1])
+frequent_motif_P16_other$freq_percent <- frequent_motif_P16_other$freq/(dim(P16_other_site)[1])
 
 frequent_motif_compare <- merge(frequent_motif_P16_other,frequent_motif_P16_high,by="motif")
 
@@ -344,18 +347,18 @@ p2 <- ggplot(freq_percent_motif_melt)+
   labs(x=NULL)
   
 
-pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/08_motif_fraction.pdf")
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/08_motif_fraction.pdf")
 print(p1)
 dev.off()
 
-pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/08_motif_fraction_bar.pdf",width = 12,height = 9)
+pdf("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/08_motif_fraction_bar.pdf",width = 12,height = 9)
 print(p2)
 dev.off()
 
 ```
 
 ```{r Guitar}
-dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed")
+dir.create("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/02_site_bed")
 
 sen_site_bed <- data.frame(chr=sen_site$chr,
                               start=sen_site$pos,
@@ -363,7 +366,7 @@ sen_site_bed <- data.frame(chr=sen_site$chr,
                               name=paste0(sen_site$chr,"_",sen_site$pos),
                               score=".",
                               strand=sen_site$strand)
-write.table(sen_site_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_site.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_site_bed,"07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/02_site_bed/sen_site.bed",quote = F,row.names = F,col.names = F,sep = '\t')
 
 sen_P16h <- sen_site[sen_site$diff_frac_group=="P16_high",]
 sen_P16h_bed <- data.frame(chr=sen_P16h$chr,
@@ -372,7 +375,7 @@ sen_P16h_bed <- data.frame(chr=sen_P16h$chr,
                               name=paste0(sen_P16h$chr,"_",sen_P16h$pos),
                               score=".",
                               strand=sen_P16h$strand)
-write.table(sen_P16h_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_P16h.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_P16h_bed,"07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/02_site_bed/sen_P16h.bed",quote = F,row.names = F,col.names = F,sep = '\t')
 
 sen_P16other <- sen_site[!sen_site$diff_frac_group=="P16_high",]
 sen_P16other_bed <- data.frame(chr=sen_P16other$chr,
@@ -381,7 +384,7 @@ sen_P16other_bed <- data.frame(chr=sen_P16other$chr,
                               name=paste0(sen_P16other$chr,"_",sen_P16other$pos),
                               score=".",
                               strand=sen_P16other$strand)
-write.table(sen_P16other_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_P16other.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+write.table(sen_P16other_bed,"07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/02_site_bed/sen_P16other.bed",quote = F,row.names = F,col.names = F,sep = '\t')
 
 
 
@@ -394,7 +397,7 @@ stBedFiles <- list("sen_site.bed","sen_P16h.bed","sen_P16other.bed")
 gtffile <- file.path("/disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc.gtf")    #my own gtf
 txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
 
-dir <- "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/"
+dir <- "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/"
 
 guitar_plot <- GuitarPlot(txTxdb = txdb,
            stBedFiles = file.path(dir,"02_site_bed",stBedFiles),
@@ -405,7 +408,7 @@ guitar_plot <- GuitarPlot(txTxdb = txdb,
            stGroupName = c("sen","P16_high","P12_other"))
            #txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
 # draw
-pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/09_metagene_profiles_of_pU_site.pdf")
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/09_metagene_profiles_of_pU_site.pdf")
 print(guitar_plot+theme_bar)
 dev.off()
 
@@ -421,7 +424,7 @@ guitar_plot <- GuitarPlot(txTxdb = txdb,
            stGroupName = c("sen","P16_high","P12_other"))
            #txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
 # draw
-pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/09_metagene_profiles_of_pU_site_gencode.pdf")
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/07_site_filter2/07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/09_metagene_profiles_of_pU_site_gencode.pdf")
 print(guitar_plot+theme_bar)
 dev.off()
 

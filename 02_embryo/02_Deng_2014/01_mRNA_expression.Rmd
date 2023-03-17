@@ -1,0 +1,147 @@
+---
+title: "01_mRNA_expression"
+author: "Tang Li"
+date: '2022-12-1'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggbeeswarm)
+library(ggplot2)
+library(ggprism)
+library(reshape2)
+library(stringr)
+library(venn)
+library(ttFunctions)
+
+require(knitr)
+opts_knit$set(root.dir = "~/Data/02_embryo/01_mouse_embryo_scRNA-seq_2014_Ding/")
+
+```
+
+```{r}
+file_list <- list.files("01_expression/")[c(277:280,114:121,205:216,165:174,51:64,65:92,1:50,122:164,217:276,175:204)]
+
+temp <- read.table("01_expression/GSM1112490_16cell_1-10_expression.txt",header = F)
+fpkm_matrix <- temp[,c(1,2)]
+
+for (i in file_list){
+  fpkm_matrix[,i] <- read.table(file.path("01_expression/",i),header = F)[,3]
+}
+
+
+sample <- c("gene_name","trans_id",
+            paste(c(rep("Zygote",4),rep("E2C",8),rep("M2C",12),rep("L2C",10),rep("C4",14),rep("C8",28),rep("C16",50),rep("EB",43),rep("MB",60),rep("LB",30)),
+                c(seq(4),seq(8),seq(12),seq(10),seq(14),seq(28),seq(50),seq(43),seq(60),seq(30)),sep = "_"))
+
+colnames(fpkm_matrix) <- sample
+
+fpkm_matrix_mean <- fpkm_matrix[,1:2]
+
+group <- c("Zygote","E2C","M2C","L2C","C4","C8","C16","EB","MB","LB")
+sample_num <- c(4,8,12,10,14,28,50,43,60,30)
+names(sample_num) <- group
+j=3
+for (i in group){
+  fpkm_matrix_mean[,i] <- apply(fpkm_matrix[,j:(j+sample_num[i]-1)],1,mean,na.rm=T)
+}
+
+tt_wt(fpkm_matrix,"fpkm_matrix.txt",row.names = T,col.names = T)
+tt_wt(fpkm_matrix_mean,"fpkm_matrix_mean.txt",row.names = T,col.names = T)
+
+
+gene_id_name <- read.table("~/reference/annotation/gene_id_name_final2_mm.txt",header = T)
+
+venn(list(gene_id_name$mm9,fpkm_matrix_mean$gene_name))
+venn(list(gene_id_name$mm10,fpkm_matrix_mean$gene_name))
+venn(list(gene_id_name$mm39,fpkm_matrix_mean$gene_name))
+
+
+table(rowSums(fpkm_matrix_mean[,3:12]>0.5)>=1)
+
+fpkm_matrix_mean_filter <- fpkm_matrix_mean[rowSums(fpkm_matrix_mean[,3:12]>0.5)>=1,]
+
+venn(list(gene_id_name$mm9,fpkm_matrix_mean_filter$gene_name))
+venn(list(gene_id_name$mm10,fpkm_matrix_mean_filter$gene_name))
+venn(list(gene_id_name$mm39,fpkm_matrix_mean_filter$gene_name))
+venn(list(c(gene_id_name$mm9,gene_id_name$mm10,gene_id_name$mm39),fpkm_matrix_mean_filter$gene_name))
+
+fpkm_matrix_mean_filter[!fpkm_matrix_mean_filter$gene_name %in% gene_id_name$mm9,]
+
+fpkm_matrix_mean_filter_mm9 <- fpkm_matrix_mean_filter[fpkm_matrix_mean_filter$gene_name %in% gene_id_name$mm9,]
+
+fpkm_matrix_mean_filter_mm9[fpkm_matrix_mean_filter_mm9$gene_name %in% fpkm_matrix_mean_filter_mm9$gene_name[duplicated(fpkm_matrix_mean_filter_mm9$gene_name)],]
+
+fpkm_matrix_mean_filter_mm9 <- fpkm_matrix_mean_filter_mm9[!duplicated(fpkm_matrix_mean_filter_mm9$gene_name),]
+
+gene_id_name_use <- gene_id_name[gene_id_name$mm9 %in% fpkm_matrix_mean_filter_mm9$gene_name,]
+gene_id_name_use <- gene_id_name_use[!duplicated(gene_id_name_use$mm9),]
+
+venn(list(gene_id_name_use$mm9,fpkm_matrix_mean_filter_mm9$gene_name))
+fpkm_matrix_mean_filter_mm9_mm39 <- merge(gene_id_name_use[,c(1,3)],fpkm_matrix_mean_filter_mm9,by.x = "mm9",by.y = "gene_name")
+
+table(is.na(fpkm_matrix_mean_filter_mm9_mm39$mm39))
+
+fpkm_matrix_mean_filter_mm9_mm39 <- fpkm_matrix_mean_filter_mm9_mm39[!is.na(fpkm_matrix_mean_filter_mm9_mm39$mm39),]
+
+table(duplicated(fpkm_matrix_mean_filter_mm9_mm39$mm39))
+
+fpkm_matrix_mean_filter_mm9_mm39 <- fpkm_matrix_mean_filter_mm9_mm39[!duplicated(fpkm_matrix_mean_filter_mm9_mm39$mm39),]
+
+tt_wt(fpkm_matrix_mean_filter_mm9_mm39,"fpkm_matrix_mean_filter_mm9_mm39.txt",col.names = T)
+```
+
+```{r relative exp}
+max <- apply(fpkm_matrix_mean_filter_mm9_mm39[,4:13],1,max)
+
+fpkm_matrix_mean_filter_mm9_mm39_percent <- cbind(fpkm_matrix_mean_filter_mm9_mm39[,1:2],fpkm_matrix_mean_filter_mm9_mm39[,4:13]/max)
+
+tt_wt(fpkm_matrix_mean_filter_mm9_mm39_percent,"fpkm_matrix_mean_filter_mm9_mm39_percent.txt",col.names = T)
+
+```
+
+```{r}
+m6A_genes <- c("METTL3","METTL14","METTL16","WTAP","VIRMA","CBLL1","ZC3H13","RBM15","RBM15B","FTO","ALKBH5","YTHDF1","YTHDF2","YTHDF3","YTHDC1","YTHDC2","HNRNPA2B1","EIF3A","IGF2BP1","IGF2BP2","IGF2BP3","FMR1","HNRNPC","RBMX","ELAVL1","G3BP1","G3BP2","Nudt21","Cpsf6")
+m6A_genes <- str_to_title(m6A_genes)
+
+table(m6A_genes %in% fpkm_matrix_filter$gene_id)
+
+m6A_genes[!m6A_genes %in% fpkm_matrix_filter$gene_id]
+
+
+fpkm_m6A <- fpkm_matrix_filter[fpkm_matrix_filter$gene_id %in% m6A_genes,]
+
+fpkm_m6A_melt <- fpkm_m6A
+
+fpkm_m6A_melt <- melt(fpkm_m6A_melt,id.vars = c("track_id","gene_id"),variable.name = "sample",value.name = "fpkm")
+
+fpkm_m6A_melt$group <- factor(rep(c(rep("MII",2),rep("C2",4),rep("C4",4),rep("C8",3),rep("morula",2),rep("ICM",4),rep("TE",4),rep("E65Epi",2),rep("E65Exe",2)),each=41),
+                                levels = c("MII","C2","C4","C8","morula","ICM","TE","E65Epi","E65Exe"))
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
+
+pdf("01_m6Agenes_exp_level_nobar.pdf")
+
+for (i in fpkm_m6A$track_id){
+  p <- ggplot(fpkm_m6A_melt[fpkm_m6A_melt$track_id==i,],aes(x=group,y=fpkm))+
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2,fill="#F3B747")+ #绘制柱状图
+    geom_quasirandom()+
+    #geom_point(position = "jitter",)+
+    #stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=expression(fpkm))+#标题
+    #scale_fill_manual(values = c())+
+    theme_bar+
+    ggtitle(fpkm_m6A[fpkm_m6A$track_id==i,"gene_id"])
+  print(p)
+}
+dev.off()
+```
+

@@ -1,0 +1,94 @@
+---
+title: "gene_set"
+author: "Tang Li"
+date: '2023-02-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# ~/Data/01_TC1/00_gene_set/00_gene_set.Rproj
+
+library(stringr)
+library(ttFunctions)
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/00_gene_set/"))
+```
+
+## R Markdown
+
+```{r all gene}
+## pluri
+pluri <- read.table("all/pluri")$V1
+
+duplicated(pluri)
+pluri <- pluri[!duplicated(pluri)]
+pluri <- sort(pluri)
+
+tt_wt(pluri,"all/pluri")
+
+
+## toti
+toti <- read.table("all/toti")$V1
+
+duplicated(toti)
+toti <- toti[!duplicated(toti)]
+toti <- sort(toti)
+
+tt_wt(toti,"all/toti")
+
+## TE_TSC
+TE_TSC <- read.table("all/TE_TSC")$V1
+
+duplicated(TE_TSC)
+TE_TSC <- TE_TSC[!duplicated(TE_TSC)]
+TE_TSC <- sort(TE_TSC)
+
+tt_wt(TE_TSC,"all/TE_TSC")
+
+## PrE_XEN
+PrE_XEN <- read.table("all/PrE_XEN")$V1
+
+duplicated(PrE_XEN)
+PrE_XEN <- PrE_XEN[!duplicated(PrE_XEN)]
+PrE_XEN <- sort(PrE_XEN)
+
+tt_wt(PrE_XEN,"all/PrE_XEN")
+
+## all
+all <- c(toti,pluri,PrE_XEN,TE_TSC)
+
+duplicated(all)
+all[duplicated(all)]
+all <- all[!duplicated(all)]
+all <- sort(all)
+
+tt_wt(all,"all/all")
+
+
+
+```
+
+```{r APA_perturb}
+APA_perturb <- read.table("all/APA_perturb")$V1
+
+APA_perturb <- str_to_title(APA_perturb)
+APA_perturb <- sort(APA_perturb)
+
+tt_wt(APA_perturb,"all/APA_perturb")
+
+```
+
+```{r APA}
+APA <- read.table("all/APA")$V1
+
+APA <- str_to_title(APA)
+APA <- sort(APA)
+
+tt_wt(APA,"all/APA")
+
+```
+
+

@@ -1,0 +1,135 @@
+---
+title: "07_rMATS_result"
+author: "Tang Li"
+date: '2023-01-07'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(ttFunctions)
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/04_TC1_mRNA/12_rMATS")
+```
+
+```{bash rMATS}
+## rMATS安装在pseudiU
+mkdir /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS
+
+cd /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS
+
+## 手动创建bam文件路径txt，重复之间逗号隔开，文件夹名 00_config
+
+mkdir p0_p10
+# 使用Mus_musculus.GRCm39.108.basic.pc.gtf
+# 长度如何选择？150？120（检测到的数量特少）？（查看trim之后的fastqc,找峰值，查看fastqc原始文件，确认为150）加上--variable-read-length参数
+# --variable-read-length  Allow reads with lengths that differ from --readLength to be processed. --readLength will still be used to determine IncFormLen and SkipFormLen
+rmats.py --b1 /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/00_config/p0_bam_path.txt --b2 /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/00_config/p10_bam_path.txt --gtf /disk/user_09/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.pc.gtf -t paired --readLength 150 --variable-read-length --nthread 50 --od /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/p0_p10/output --tmp /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/p0_p10/tmp 1> /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/p0_p10/run.log 2>&1 &
+
+mkdir rp2_p10
+rmats.py --b1 /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/00_config/rp2_bam_path.txt --b2 /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/00_config/p10_bam_path.txt --gtf /disk/user_09/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.pc.gtf -t paired --readLength 150 --variable-read-length --nthread 50 --od /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/rp2_p10/output --tmp /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/rp2_p10/tmp 1> /disk/user_09/Data/01_TC1/04_TC1_mRNA/12_rMATS/rp2_p10/run.log 2>&1 &
+
+```
+
+## p0_p10 output
+```{r cars}
+
+SE_JC <- read.table("p0_p10/output/SE.MATS.JC.txt",header = T)
+SE_JC_filter <- SE_JC[SE_JC$FDR<0.05,]
+
+dir.create("p0_p10/output_modify")
+tt_wt(SE_JC_filter,"p0_p10/output_modify/SE_JC_filter.txt",col.names = T)
+
+SE_JC_filter$IncLevel1.1 <- SE_JC_filter$IncLevel1
+
+#volcano_color <- c(UP = alpha("#C01623", 0.7),DOWN = alpha("#4431A5", 0.7),NC=alpha("#E5E1DD", 0.7))
+volcano_color <- c(UP = alpha("#CC0000", 0.7),DOWN = alpha("#2f5688", 0.7),NC=alpha("#BBBBBB", 0.7))
+
+diffThreshold <- 0.1
+
+SE_JC_filter$diff_group <- ifelse(SE_JC_filter$IncLevelDifference>diffThreshold & SE_JC_filter$padj<padj,"UP",
+                             ifelse(SE_JC_filter$log2FoldChange< -diffThreshold & SE_JC_filter$padj<padj,"DOWN","NC"))
+res_up_gene <- SE_JC_filter[SE_JC_filter$express=="UP",]
+padj_label_up <- head(rownames(res_up_gene[order(res_up_gene$padj),]),padj_label)
+lfc_label_up <- head(rownames(res_up_gene[order(res_up_gene$log2FoldChange,decreasing =T),]),lfc_label)
+res_down_gene <- SE_JC_filter[SE_JC_filter$express=="DOWN",]
+padj_label_down <- head(rownames(res_down_gene[order(res_down_gene$padj),]),padj_label)
+lfc_label_down <- head(rownames(res_down_gene[order(res_down_gene$log2FoldChange,decreasing =F),]),lfc_label)
+label_genes <- c(padj_label_up,padj_label_down,lfc_label_up,lfc_label_down)
+label_genes <- label_genes[!duplicated(label_genes)]
+SE_JC_filter[label_genes,"volcano_label"] <- label_genes
+p <- ggplot2::ggplot(as.data.frame(SE_JC_filter))+
+ggplot(SE_JC_filter)+
+  ggplot2::geom_point(mapping=aes(x=log2FoldChange,y=-log10(padj),col=express),size=1,alpha=0.7)+
+  #ggrepel::geom_text_repel(aes(x=log2FoldChange,y=-log10(padj),col=express,label=volcano_label),show.legend = F,position = position_nudge())+
+  ggrepel::geom_text_repel(aes(x=log2FoldChange,y=-log10(padj),col=express,label=volcano_label),show.legend = F,max.overlaps=30)+
+  ggplot2::scale_color_manual(values = volcano_color,
+                     breaks=c("UP", "DOWN","NC"),
+                     labels=c(paste0("UP (", nrow(SE_JC_filter[SE_JC_filter$express == "UP",]), ")"),
+                              paste0("DOWN (",nrow(SE_JC_filter[SE_JC_filter$express == "DOWN",]),")"),
+                              "NC"))+
+  ggplot2::theme_bw()+
+  ggplot2::ylim(0,padj_limit)+
+  ggplot2::labs(x=expression(Log[2]~FoldChange),y=expression(-Log[10]~padj))+
+  ggplot2::theme(legend.position = "right", #top
+        legend.title = element_blank(),
+        #legend.position = c(0.85,0.75),
+        legend.background = element_blank(),
+        panel.grid =element_blank(),
+        panel.background = element_rect(fill = "white",colour="black",size=2),
+        legend.key = element_blank(),
+        legend.text = element_text(size = 15,  face = 'plain'),# bold
+        legend.direction= "vertical")+ #horizontal,vertical
+  ggplot2::theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+  ggplot2::theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+  ggplot2::theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+  ggplot2::theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))+
+  ggplot2::ggtitle(paste0("DEG ",i," ",j))+
+  ggplot2::theme(plot.title = element_text(hjust=0.5, size = 20,  face = 'bold'))+
+  ggplot2::geom_hline(yintercept = -log10(padj),linetype="dashed") +
+  ggplot2::geom_vline(xintercept = c(-diffThreshold,diffThreshold),linetype="dashed")
+
+ggplot(SE_JC_filter)+
+    geom_point(aes(x=,y=get(stage1),color=filter),size=2,position="jitter",alpha=0.5)+
+    scale_color_manual(values = volcano_color, 
+                       breaks=c("UP", "NC", "DOWN"),
+                       labels=c(paste0("3'UTR ",stage1,"_longer (", nrow(dapars[dapars$filter == "UP",]), ")"),
+                                "3'UTR non-significant", 
+                                paste0("3'UTR ",stage2,"_longer (",nrow(dapars[dapars$filter == "DOWN",]),")")))+
+    ylab(paste0("Mean PDUIs of genes in mRNA_",stage1)) + 
+    xlab(paste0("Mean PDUIs of genes in mRNA_",stage2))+
+    theme_bw()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          #legend.position = c(0.85,0.75),
+          legend.background = element_blank(),
+          panel.grid =element_blank(),
+          panel.background = element_rect(fill = "white",colour="black",size=2),
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15,  face = 'bold'),
+          legend.direction= "vertical")+
+    theme(axis.text = element_text(size = 18), plot.margin = unit(c(0.5,0.5,0,0.5), "cm"))+
+    theme(plot.margin = unit(c(0.5,0.5,0.5,0.3), "cm"))+ #调整与图片边缘的距离
+    theme(axis.title.x = element_text(size = 18,margin = margin(t=8)))+
+    theme(axis.title.y = element_text(size = 18,margin = margin(r=5 )))
+
+hist(SE_JC_filter$IncLevelDifference,breaks = 100)
+
+SE_JC_filter_p0 <- SE_JC_filter[SE_JC_filter$IncLevelDifference>0.1,]
+SE_JC_filter_p10 <- SE_JC_filter[SE_JC_filter$IncLevelDifference< -0.1,]
+
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

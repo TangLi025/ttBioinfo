@@ -1,0 +1,36 @@
+SAMPLE=["Growing_oocyte_10days","Growing_oocyte_14days","GV_8weeks","MII_oocyte_rep1","MII_oocyte_rep2","zygote_PN5_rep1","zygote_PN5_rep2","early_2cell_rep1","early_2cell_rep2","late_2cell_rep1","late_2cell_rep2","cell4_rep1","cell4_rep2","cell8_rep1","cell8_rep2","ICM_rep1","ICM_rep2"]
+READ=["1","2"]
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/rRNA_mm39/rRNA"
+
+MAPPING_THREADS = 45
+
+rule all:
+  input:
+    expand("02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",sample=SAMPLE),
+    
+rule bowtie2_mapping:
+  input:
+    "01_trim_galore/{sample}_1_val_1.fq.gz",
+    "01_trim_galore/{sample}_2_val_2.fq.gz"
+  output:
+    R1="02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    R2="02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz",
+    bam="02_fastq_derRNA/01_bam_raw/{sample}.bam",
+    summary="info/02_fastq_derRNA/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX_rRNA,
+    outname="02_fastq_derRNA/00_derRNA_fastq/{sample}_%.derRNA.fq.gz"
+  log:
+    "logs/02_fastq_derRNA/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --un-conc-gz {params.outname} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {output.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """

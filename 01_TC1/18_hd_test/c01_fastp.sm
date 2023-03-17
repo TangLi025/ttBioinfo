@@ -1,0 +1,27 @@
+SAMPLE=["MGI","illumina"]
+
+READ=["1","2"]
+
+rule all:
+  input:
+    expand("01_fastp/{sample}_T53_{read}.fq.gz",sample=SAMPLE,read=READ)
+    
+rule dedupe:
+  input:
+    "00_raw_fastq/{sample}_T53_1.fq.gz",
+    "00_raw_fastq/{sample}_T53_2.fq.gz"
+  output:
+    "01_fastp/{sample}_T53_1.fq.gz",
+    "01_fastp/{sample}_T53_2.fq.gz",
+    "01_fastp/{sample}_T53.json",
+    "01_fastp/{sample}_T53.html"
+  log:
+    "logs/fastp/{sample}_T53.log"
+  threads: 16
+  shell:
+    "/disk/user_09/anaconda3/envs/m6A/bin/fastp \
+      -w {threads} -V \
+      -i {input[0]} -o {output[0]} \
+      -I {input[1]} -O {output[1]} \
+      -j {output[2]} -h {output[3]} \
+      --overlap_len_require 15 1> {log} 2>&1"

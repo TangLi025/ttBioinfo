@@ -1,0 +1,185 @@
+SAMPLE=["P0_input","P0_IP_1","P0_IP_2","P0_IP_3","P9_input","P9_IP_1","P9_IP_2","P9_IP_3"]
+
+READ=["1","2"]
+
+TRIM_THREADS = 6
+
+rule all:
+  input:
+    "info/00_raw_fastq/01_fastqc/multiqc_report.html",
+    "info/01_fastp/01_trim/01_fastqc/multiqc_report.html",
+    "info/01_fastp/02_dedup/01_fastqc/multiqc_report.html",
+    "info/01_fastp/03_trim_umi/01_fastqc/multiqc_report.html"
+    
+rule fastqc1:
+  input:
+    "00_raw_fastq/{sample}_{read}.fq.gz"
+  output:
+    "info/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.html",
+    "info/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.zip"
+  log:
+    "logs/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.log"
+  threads: 1
+  params:
+    out_dir="info/00_raw_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} 1> {log} 2>&1"
+    
+rule multiqc1:
+  input:
+    expand("info/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.html", sample=SAMPLE,read=READ),
+    expand("info/00_raw_fastq/01_fastqc/{sample}_{read}_fastqc.zip", sample=SAMPLE,read=READ)
+  output:
+    "info/00_raw_fastq/01_fastqc/multiqc_report.html"
+  log:
+    "logs/00_raw_fastq/01_fastqc/multiqc_report.log"
+  threads: 1
+  params:
+    out_dir="info/00_raw_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
+
+rule trim_galore:
+  input:
+    "00_raw_fastq/{sample}_1.fq.gz",
+    "00_raw_fastq/{sample}_2.fq.gz"
+  output:
+    "01_fastp/01_trim/{sample}_1_val_1.fq.gz",
+    "01_fastp/01_trim/{sample}_2_val_2.fq.gz"
+  params:
+    output_dir="01_fastp/01_trim"
+  log:
+    "logs/01_fastp/01_trim/{sample}.log"
+  threads: TRIM_THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/trim-galore/bin/trim_galore \
+      -o {params.output_dir} --gzip \
+      --path_to_cutadapt /disk/user_09/anaconda3/envs/trim-galore/bin/cutadapt \
+      -j {threads} --paired {input} 1> {log} 2>&1"
+      
+rule fastqc2:
+  input:
+    "01_fastp/01_trim/{sample}_{read}_val_{read}.fq.gz"
+  output:
+    "info/01_fastp/01_trim/01_fastqc/{sample}_{read}_val_{read}_fastqc.html",
+    "info/01_fastp/01_trim/01_fastqc/{sample}_{read}_val_{read}_fastqc.zip"
+  log:
+    "logs/01_fastp/01_trim/01_fastqc/{sample}_{read}_val_{read}_fastqc.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/01_trim/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule multiqc2:
+  input:
+    expand("info/01_fastp/01_trim/01_fastqc/{sample}_{read}_val_{read}_fastqc.html",sample=SAMPLE,read=READ),
+    expand("info/01_fastp/01_trim/01_fastqc/{sample}_{read}_val_{read}_fastqc.zip",sample=SAMPLE,read=READ)
+  output:
+    "info/01_fastp/01_trim/01_fastqc/multiqc_report.html"
+  log:
+    "logs/01_fastp/01_trim/01_fastqc/multiqc_report.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/01_trim/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
+
+rule dedupe:
+  input:
+    "01_fastp/01_trim/{sample}_1_val_1.fq.gz",
+    "01_fastp/01_trim/{sample}_2_val_2.fq.gz"
+  output:
+    "01_fastp/02_dedup/{sample}_1.fq.gz",
+    "01_fastp/02_dedup/{sample}_2.fq.gz",
+    html="info/01_fastp/02_dedup/{sample}.html",
+    json="info/01_fastp/02_dedup/{sample}.json"
+  log:
+    "logs/01_fastp/02_dedup/{sample}.log"
+  threads: TRIM_THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/m6A/bin/fastp \
+      -w {threads} -V -A \
+      -i {input[0]} -o {output[0]} \
+      -I {input[1]} -O {output[1]} \
+      --html {output.html} --json {output.json} \
+      --dedup \
+      -l 20 1> {log} 2>&1"
+
+rule fastqc3:
+  input:
+    "01_fastp/02_dedup/{sample}_{read}.fq.gz"
+  output:
+    "info/01_fastp/02_dedup/01_fastqc/{sample}_{read}_fastqc.html",
+    "info/01_fastp/02_dedup/01_fastqc/{sample}_{read}_fastqc.zip"
+  log:
+    "logs/01_fastp/02_dedup/01_fastqc/{sample}_{read}.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/02_dedup/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule multiqc3:
+  input:
+    expand("info/01_fastp/02_dedup/01_fastqc/{sample}_{read}_fastqc.html",sample=SAMPLE,read=READ),
+    expand("info/01_fastp/02_dedup/01_fastqc/{sample}_{read}_fastqc.zip",sample=SAMPLE,read=READ)
+  output:
+    "info/01_fastp/02_dedup/01_fastqc/multiqc_report.html"
+  log:
+    "logs/01_fastp/02_dedup/01_fastqc/multiqc3.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/02_dedup/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
+
+
+rule trim_umi:
+  input:
+    "01_fastp/02_dedup/{sample}_1.fq.gz",
+    "01_fastp/02_dedup/{sample}_2.fq.gz"
+  output:
+    "01_fastp/03_trim_umi/{sample}_1.fq.gz",
+    "01_fastp/03_trim_umi/{sample}_2.fq.gz",
+    html="info/01_fastp/03_trim_umi/{sample}.html",
+    json="info/01_fastp/03_trim_umi/{sample}.json"
+  log:
+    "logs/01_fastp/03_trim_umi/{sample}.log"
+  threads: TRIM_THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/m6A/bin/fastp \
+      -w {threads} -V -A \
+      -i {input[0]} -o {output[0]} \
+      -I {input[1]} -O {output[1]} \
+      --html {output.html} --json {output.json} \
+      -f 4  -F 0 -T 4 \
+      -l 20 1> {log} 2>&1"
+
+rule trim_umi_fastqc:
+  input:
+    "01_fastp/03_trim_umi/{sample}_{read}.fq.gz"
+  output:
+    "info/01_fastp/03_trim_umi/01_fastqc/{sample}_{read}_fastqc.html",
+    "info/01_fastp/03_trim_umi/01_fastqc/{sample}_{read}_fastqc.zip"
+  log:
+    "logs/01_fastp/03_trim_umi/01_fastqc/{sample}_{read}.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/03_trim_umi/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule trim_umi_multiqc:
+  input:
+    expand("info/01_fastp/03_trim_umi/01_fastqc/{sample}_{read}_fastqc.html",sample=SAMPLE,read=READ),
+    expand("info/01_fastp/03_trim_umi/01_fastqc/{sample}_{read}_fastqc.zip",sample=SAMPLE,read=READ)
+  output:
+    "info/01_fastp/03_trim_umi/01_fastqc/multiqc_report.html"
+  log:
+    "logs/01_fastp/03_trim_umi/01_fastqc/multiqc3.log"
+  threads: 1
+  params:
+    out_dir="info/01_fastp/03_trim_umi/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"

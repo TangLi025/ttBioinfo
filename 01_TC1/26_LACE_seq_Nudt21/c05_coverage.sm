@@ -1,0 +1,49 @@
+SAMPLE=["P0_input","P0_IP_1","P0_IP_2","P0_IP_3","P9_input","P9_IP_1","P9_IP_2","P9_IP_3"]
+
+METHOD=["raw","dedup"]
+THREADS = 10
+
+rule all:
+  input:
+    expand("03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{sample}.bw",method=METHOD,sample=SAMPLE),
+    expand("03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bedgraph/{sample}.bedgraph",method=METHOD,sample=SAMPLE)
+
+rule bamCoverage:
+  input:
+    "03_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam"
+  output:
+    bw="03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{sample}.bw"
+  log:
+    "logs/03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{sample}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing RPKM \
+      --exactScaling \
+      --binSize 5 \
+       > {log} 2>&1"
+
+rule bamCoverage_bedgraph:
+  input:
+    "03_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam"
+  output:
+    bw="03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bedgraph/{sample}.bedgraph"
+  log:
+    "logs/03_hisat2_mapping/{method}_vs_vs/02_bam_raw_bedgraph/{sample}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --outFileFormat bedgraph \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing RPKM \
+      --exactScaling \
+      --binSize 5 \
+       > {log} 2>&1"

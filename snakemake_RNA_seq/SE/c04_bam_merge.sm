@@ -1,0 +1,63 @@
+#SAMPLE=["IC","IR","P12","P16"]
+#TREATMENT=["BS","input"]
+#REP=["1","2","3"]
+
+SAMPLE=["P12","P16"]
+TREATMENT=["input","BS"]
+REP=["1","2","3"]
+
+STRAND=["pos","neg"]
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_{strand}.bam.bai",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND),
+    "04_hisat2_mapping/03_bam_separate/flagstat/flagstat_summary.txt"
+    
+rule bam_separate:
+  input:
+    "04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam",
+    "04_hisat2_mapping/02_filter5/{sample}_{treatment}_{rep}_filter.bam.bai"
+  output:
+    "04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_pos.bam",
+    "04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_neg.bam"
+  threads: 8
+  shell:
+    """
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -b -F 16 {input[0]} 1> {output[0]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -b -f 16 {input[0]} 1> {output[1]}
+  	"""
+    
+rule bam_separated_index:
+  input:
+    "04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_{strand}.bam"
+  output:
+    "04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_{strand}.bam.bai"
+  log:
+    "logs/04_hisat2_mapping/03_bam_separate/bam_{strand}_index_{sample}_{treatment}_{rep}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} > {log} 2>&1"
+
+rule bam_merge_flagstat:
+  input:
+    "04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_{strand}.bam"
+  output:
+    "04_hisat2_mapping/03_bam_separate/flagstat/{sample}_{treatment}_{rep}_{strand}.flagstat"
+  log:
+    "logs/04_hisat2_mapping/03_bam_separate/{sample}_{treatment}_{rep}_flagstat_{strand}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} > {output} 2>{log}"
+
+rule bam_flagstat_summary:
+  input:
+    expand("04_hisat2_mapping/03_bam_separate/flagstat/{sample}_{treatment}_{rep}_{strand}.flagstat",sample=SAMPLE,treatment=TREATMENT,rep=REP,strand=STRAND)
+  output:
+    "04_hisat2_mapping/03_bam_separate/flagstat/flagstat_summary.txt"
+  log:
+    "logs/bam_merge_flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'mapped' {input}   > {output}
+    """

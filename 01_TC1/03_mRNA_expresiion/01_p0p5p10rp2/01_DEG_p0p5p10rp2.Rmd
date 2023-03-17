@@ -1,0 +1,1468 @@
+---
+title: "r01_DEG_mRNA_p0p5p10rp2"
+author: "Tang Li"
+date: '2023-2-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(GEOquery)
+library(GenomicFeatures)
+library(BiocParallel)
+library(GenomicAlignments)
+library(rtracklayer)
+library(NMF)
+library(parallel)
+library(Rsubread)
+library(RUVSeq)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggprism)
+library(RColorBrewer)
+library(ttFunctions)
+library(ggthemes)
+library(ggsci)
+library(ggpubr)
+library(ComplexHeatmap)
+library(sva)
+library(venn)
+options(stringsAsFactors = FALSE)
+library(ggrepel)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(biomaRt)
+library(enrichplot)
+library(patchwork)
+
+# ~/Data/01_TC1/01_mRNA_expression/01_p0p5p10rp2/01_p0p5p10rp2.Rproj
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/01_mRNA_expression/01_p0p5p10rp2/"))
+
+```
+
+```{r}
+#generage p6_siNudt21 bam list
+dir1='/disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/'
+sample_name1 <- paste(rep(c("p6"),each=6),rep(c("siNC","siNudt21_1","siNudt21_3"),each=2),
+                      rep(c("rep1","rep2"),times=3),
+                      sep = "_")
+
+#generate siVirma siM3 M3IN bam list
+dir2 <- "/disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/"
+sample_name2 <- paste(rep(c("Ctrl","M3IN","siNC","siM3","siVirma"),each=2),
+                      rep(c("rep1","rep2"),times=5),
+                      sep = "_")
+
+#generate Nudt21 bam list
+dir3 <- "/disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/"
+sample_name3 <- c("P8_Ctrl_Ctrl","P8_M3IN_Ctrl",
+                  "P8_M3IN_At-c1","P8_M3IN_At-c2",
+                  "P8_M3IN_CCCP-c1","P8_M3IN_CCCP-c2",
+                  "P8_M3IN_CX-c1","P8_M3IN_CX-c2",
+                  "P8_M3IN_Rbin-c1","P8_M3IN_Rbin-c2",
+                  "P14_siNC-1","P14_siNudt21","P14_siM3",
+                  "P14_siNC-2","P14_siVirma",
+                  "P0_siNudt21_Ctrl","P0_siNudt21_dox",
+                  "P2_siNudt21_Ctrl","P2_siNudt21_dox",
+                  "P4_siNudt21_Ctrl","P4_siNudt21_dox",
+                  "P5_siNudt21_Ctrl","P5_siNudt21_dox")
+
+#generate mRNA bam list
+dir4 <- "/disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/"
+sample_name4 <- paste(rep(c("p0","p5","p10","rp2"),each=2),
+                      rep(c("input"),each=8),
+                      rep(c("rep1","rep2"),times=4),
+                      sep = "_")
+
+fls <- c(file.path(dir1,paste0(sample_name1,'.bam')),
+         file.path(dir2,paste0(sample_name2,'.bam')),
+         file.path(dir3,paste0(sample_name3,'.bam')),
+         file.path(dir4,paste0(sample_name4,'.bam')))
+file.exists(fls)
+```
+
+## featurecount
+
+```{bash}
+#### 由于mRNA p0p5p10的bam文件有问题(R语言featureCounts时闪退)，所以在bash上跑featureCounts
+cd /disk/user_09/Data/01_TC1/01_mRNA_expression/01_p0p5p10rp2
+conda activate subread
+featureCounts -a /disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf \
+  -o express_matrix_featureCounts_gencode.vM29.basic.annotation.pc_exon_minOverlap30.txt \
+  -F GTF -t exon -g 'gene_id' --extraAttributes 'gene_name','gene_type' \
+  --minOverlap 30 -s 2 -p -T 50 \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNC_rep1.bam \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNC_rep2.bam \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNudt21_1_rep1.bam \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNudt21_1_rep2.bam \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNudt21_3_rep1.bam \
+  /disk/user_08/Data/TC1-planB/35_Nudt21_EB/03_hisat2_mapping/03_bam_merge/p6_siNudt21_3_rep2.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/Ctrl_rep1.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/Ctrl_rep2.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/M3IN_rep1.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/M3IN_rep2.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siNC_rep1.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siNC_rep2.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siM3_rep1.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siM3_rep2.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siVirma_rep1.bam \
+  /disk/user_09/Data/01_TC1/12_TC1_P16_si/03_hisat2_mapping/03_bam_merge/siVirma_rep2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_Ctrl_Ctrl.bam \
+ /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_Ctrl.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_At-c1.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_At-c2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_CCCP-c1.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_CCCP-c2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_CX-c1.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_CX-c2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_Rbin-c1.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P8_M3IN_Rbin-c2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P14_siNC-1.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P14_siNudt21.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P14_siM3.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P14_siNC-2.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P14_siVirma.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P0_siNudt21_Ctrl.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P0_siNudt21_dox.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P2_siNudt21_Ctrl.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P2_siNudt21_dox.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P4_siNudt21_Ctrl.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P4_siNudt21_dox.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P5_siNudt21_Ctrl.bam \
+  /disk/user_09/Data/01_TC1/24_mito_ribo_Nudt21/03_hisat2_mapping/03_bam_merge/P5_siNudt21_dox.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p0_input_rep1.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p0_input_rep2.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p5_input_rep1.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p5_input_rep2.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p10_input_rep1.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/p10_input_rep2.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/rp2_input_rep1.bam \
+  /disk/user_08/Data/TC1-planB/11_mRNA/05_bam_hisat2/01_bam_sorted/11_bam_merge/rp2_input_rep2.bam \
+1> express_matrix_featureCounts_gencode.vM29.basic.annotation.pc_exon_minOverlap30.log 2>&1
+```
+
+```{r featurecount_result}
+fc_result <- as.data.frame(fread("01_featureCounts/express_matrix_featureCounts_gencode.vM29.basic.annotation.pc_exon_minOverlap30.txt"))
+
+fc_result$Geneid <- str_sub(fc_result$Geneid,1,18)
+
+rownames(fc_result) <- fc_result$Geneid
+
+fc_result_count <- fc_result[,9:55]
+colnames(fc_result_count) <- c(sample_name1,sample_name2,sample_name3,sample_name4)
+
+fc_result_annotation <- fc_result[,6:8]
+
+tt_wt(fc_result_count,file.path("01_featureCounts/express_matrix_count.txt"),col.names = T,row.names = T) 
+tt_wt(fc_result_annotation,file.path("01_featureCounts/express_matrix_annotation.txt"),col.names = T,row.names = T) 
+```
+
+```{r filt genes with duplicated gene name}
+
+table(duplicated(fc_result_annotation$gene_name))
+
+fc_result_count <- fc_result_count[!duplicated(fc_result_annotation$gene_name),]
+fc_result_annotation <- fc_result_annotation[rownames(fc_result_count),]
+
+rownames(fc_result_count) <- fc_result_annotation$gene_name
+rownames(fc_result_annotation) <- fc_result_annotation$gene_name
+
+tt_wt(fc_result_count,file.path("01_featureCounts/express_matrix_count_rowname_modified.txt"),col.names = T,row.names = T) 
+tt_wt(fc_result_annotation,file.path("01_featureCounts/express_matrix_annotation_rowname_modified.txt"),col.names = T,row.names = T) 
+```
+
+```{R marker gene table}
+marker_all <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//all")$V1
+marker_toti <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//toti")$V1
+marker_pluri <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//pluri")$V1
+marker_TE_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//TE_TSC")$V1
+marker_PrE_XEN <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//PrE_XEN")$V1
+marker_APA <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//APA")$V1
+marker_APAperturb <- read.table("~/Data/01_TC1/00_gene_set/all/APA_perturb")$V1
+
+table(marker_all %in% rownames(express_matrix))
+marker_all[!marker_all %in% rownames(express_matrix)]
+marker_all <- marker_all[marker_all %in% rownames(express_matrix)]
+```
+### DEG for p0p5p10rp2
+
+```{r betweenLaneNormalization & expression filter10}
+
+sample_name <- paste(rep(c("p0","p5","p10","rp2"),each=2),rep(c("rep1","rep2"),times=4),sep = "_")
+express_matrix <- fc_result_count[,40:47]
+colnames(express_matrix) <- sample_name
+meta_data <- data.frame(rep = rep(c("rep1","rep2"),times=4),
+                        stage = rep(c("p0","p5","p10","rp2"),each=2),
+                        row.names = sample_name,
+                        sample_name = sample_name,
+                        stringsAsFactors = TRUE)
+meta_data
+
+x <- meta_data$stage
+set <- newSeqExpressionSet(as.matrix(express_matrix),
+                           phenoData = data.frame(x, row.names=colnames(express_matrix)))
+set
+
+colors <- brewer.pal(18, "Paired")
+plotRLE(set, outline=FALSE, ylim=c(-2, 2), col=colors[x])
+plotPCA(set, col=colors[x], cex=1.2)
+
+set <- betweenLaneNormalization(set, which="upper")
+plotRLE(set, outline=FALSE, ylim=c(-2, 2), col=colors[x])
+plotPCA(set, col=colors[x], cex=1.2)
+
+express_matrix <- set@assayData$normalizedCounts
+
+dir.create("02_express_matrix")
+tt_wt(express_matrix,"02_express_matrix/express_matrix.txt",row.names=T,col.names = T)
+# 对表达量进行筛选
+filter <- rowSums(express_matrix>10)>=2
+table(filter)
+express_matrix_filter10 <- express_matrix[filter,]
+
+colnames(express_matrix_filter10)
+tt_wt(express_matrix_filter10,"02_express_matrix/express_matrix_filter10.txt",row.names=T,col.names = T)
+```
+
+```{r get tpm_matrix}
+#convert to TPM
+
+tpm_matrix <- do.call(cbind,base::lapply(colnames(express_matrix),FUN = function(x){
+  counts <- express_matrix[,x]
+  effLen <- fc_result_annotation[rownames(express_matrix),"Length"]
+  rate <- log(counts) - log(effLen)
+  denom <- log(sum(exp(rate)))
+  return(exp(rate-denom+log(1e6)))
+}))
+
+rownames(tpm_matrix) <- rownames(express_matrix)
+colnames(tpm_matrix) <- colnames(express_matrix)
+table(colSums(tpm_matrix))
+
+write.table(tpm_matrix,file="02_express_matrix/tpm_matrix.txt",quote = F,sep = "\t")
+```
+
+```{r marker barplot}
+tt_barplot <- function(gene_name){
+  temp <- data.frame(group=factor(c("p0","p0","p10","p10","rp2","rp2")),
+                   tpm=tpm_matrix[gene_name,c(1,2,5:8)])
+  p1 <- ggplot(temp, aes(x = group, y = tpm, fill=group)) +
+  geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2)+ #绘制柱状图
+  geom_point(show.legend = F,position = position_jitter(width = 0.1))+
+  stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+  labs(x=NULL,y=paste0(gene_name," tpm"))+#标题
+  theme_prism(palette = "floral",
+              base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+              base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+              base_size = 16,  # 图形的字体大小
+              base_line_size = 0.8, # 坐标轴的粗细
+              axis_text_angle = 0)+ # 可选值有 0，45，90，270
+  theme(plot.title = element_text(size=16,hjust = -0.5))+
+  scale_fill_prism(palette = "floral")+#使用ggprism包修改颜色
+   scale_y_continuous(expand = c(0, 0))
+  print(p1)
+}
+
+dir.create("08_marker")
+pdf("08_marker/01_APA_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_APA[marker_APA %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+tt_barplot("Gapdh")
+tt_barplot("Actb")
+dev.off()
+
+pdf("08_marker/02_toti_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_toti[marker_toti %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/03_pluri_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_pluri[marker_pluri %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/04_TE_TSC_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_TE_TSC[marker_TE_TSC %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/05_PrE_XEN_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_PrE_XEN[marker_PrE_XEN %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/06_APAperturb_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_APAperturb[marker_APAperturb %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+tt_barplot("Gapdh")
+tt_barplot("Actb")
+dev.off()
+
+```
+
+```{r marker heatmap}
+group <- c("toti","pluri","PrE_XEN","TE_TSC","APAperturb")
+
+for (i in group){
+  temp <- t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% get(paste0("marker_",i)),c(1,2,5:6)])))
+  temp <- na.omit(temp)
+  heatmap <- Heatmap(matrix = temp,name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("08_marker/08_heatmap_cluster_col_",i,".pdf"))
+heatmap <- draw(heatmap)
+dev.off()
+
+}
+```
+
+## DESeq2
+### PCA
+```{r create dir}
+dir.create("03_PCA")
+```
+
+```{r PCA - all gene - p0p5p10rp2}
+
+meta_data 
+colnames(express_matrix)
+
+dds <- DESeqDataSetFromMatrix(countData = express_matrix,colData = meta_data,design = ~ stage)
+
+#pca plot
+
+rlog <- rlog(dds,blind = FALSE)
+
+pcaData <- plotPCA(rlog,intgroup = c("stage"),returnData = TRUE,ntop=500)
+pcaData
+percentVar <- round(100 * attr(pcaData,"percentVar"))
+percentVar
+
+p1 <- ggplot(pcaData,aes(x = PC1, y = PC2, color=stage)) +
+  geom_point(size=3) +
+  #geom_label(aes(label=stage,vjust=1))+
+  xlab(paste0("PC1:",percentVar[1],"% variance")) +
+  ylab(paste0("PC2:",percentVar[2],"% variance")) +
+  #xlim(-15,15)+
+  #ylim(-15,10)+
+  coord_fixed(ratio=percentVar[2]/percentVar[1]) +
+  ggtitle("PCA plot mRNA rlog")+
+  theme_bw()
+  #scale_color_prism(palette = "floral")
+  #scale_color_manual(values = c("M3IN_0h" = "#facf87", "M3IN_4h" = "#d1d1ed", "M3IN_12h" = "#b9dbf4"))
+
+
+pdf("03_PCA/01_p0p5p10rp2_allgene_rlog.pdf",width = 8,height = 7)
+print(p1)
+dev.off()
+
+vst <- vst(dds,blind = FALSE)
+
+pcaData <- plotPCA(vst,intgroup = c("stage"),returnData = TRUE,ntop=500)
+pcaData
+percentVar <- round(100 * attr(pcaData,"percentVar"))
+percentVar
+
+p1 <- ggplot(pcaData,aes(x = PC1, y = PC2, color=stage)) +
+  geom_point(size=3) +
+  #geom_label(aes(label=stage,vjust=1))+
+  xlab(paste0("PC1:",percentVar[1],"% variance")) +
+  ylab(paste0("PC2:",percentVar[2],"% variance")) +
+  #xlim(-15,15)+
+  #ylim(-15,10)+
+  coord_fixed(ratio=percentVar[2]/percentVar[1]) +
+  ggtitle("PCA plot mRNA vst")+
+  theme_bw()
+  #scale_color_prism(palette = "floral")
+  #scale_color_manual(values = c("M3IN_0h" = "#facf87", "M3IN_4h" = "#d1d1ed", "M3IN_12h" = "#b9dbf4"))
+
+
+pdf("03_PCA/01_p0p5p10rp2_allgene_vst.pdf",width = 8,height = 7)
+print(p1)
+dev.off()
+```
+
+```{r PCA - marker gene - p0p5p10rp2}
+
+meta_data 
+colnames(express_matrix)
+
+dds <- DESeqDataSetFromMatrix(countData = express_matrix[marker_all,],colData = meta_data,design = ~ stage)
+
+#pca plot
+
+rlog <- rlog(dds,blind = FALSE)
+
+pcaData <- plotPCA(rlog,intgroup = c("stage"),returnData = TRUE,ntop=500)
+pcaData
+percentVar <- round(100 * attr(pcaData,"percentVar"))
+percentVar
+
+p1 <- ggplot(pcaData,aes(x = PC1, y = PC2, color=stage)) +
+  geom_point(size=3) +
+  #geom_label(aes(label=stage,vjust=1))+
+  xlab(paste0("PC1:",percentVar[1],"% variance")) +
+  ylab(paste0("PC2:",percentVar[2],"% variance")) +
+  #xlim(-15,15)+
+  #ylim(-15,10)+
+  coord_fixed(ratio=percentVar[2]/percentVar[1]) +
+  ggtitle("PCA plot mRNA rlog")+
+  theme_bw()
+  #scale_color_prism(palette = "floral")
+  #scale_color_manual(values = c("M3IN_0h" = "#facf87", "M3IN_4h" = "#d1d1ed", "M3IN_12h" = "#b9dbf4"))
+
+
+pdf("03_PCA/02_p0p5p10rp2_allmarker_rlog.pdf",width = 8,height = 7)
+print(p1)
+dev.off()
+```
+
+### for DEG analysis
+```{r create dds object}
+
+dds <- DESeqDataSetFromMatrix(countData = express_matrix_filter10,colData = meta_data,design = ~ stage)
+
+dir.create("04_DEG_result")
+dir.create("05_DEG_heatmap")
+dir.create("06_DEG_volcano")
+```
+
+```{r DEG analysis}
+
+#DEG
+dds <- DESeq(dds)
+resultsNames(dds)
+
+res_p0_p10 <- tt_DEG_result(dds,"p0","p10","04_DEG_result")
+res_p10_rp2 <- tt_DEG_result(dds,"p10","rp2","04_DEG_result")
+res_p0_rp2 <- tt_DEG_result(dds,"p0","rp2","04_DEG_result")
+
+
+```
+
+## filter1
+```{r DEG result filter1}
+#filter1
+
+res_p0_p10_filter_1 <- tt_DEG_filter(res_p0_p10,"p0","p10","04_DEG_result",lfcThreshold = 1)
+res_p10_rp2_filter_1 <- tt_DEG_filter(res_p10_rp2,"p10","rp2","04_DEG_result",lfcThreshold = 1)
+res_p0_rp2_filter_1 <- tt_DEG_filter(res_p0_rp2,"p0","rp2","04_DEG_result",lfcThreshold = 1)
+
+```
+
+```{r DEG heatmap filter1}
+
+tt_DEG_heatmap(res_p0_p10_filter_1,"p0","p10",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1)
+tt_DEG_heatmap(res_p10_rp2_filter_1,"p10","rp2",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1)
+tt_DEG_heatmap(res_p0_rp2_filter_1,"p0","rp2",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1)
+
+### cluster col
+tt_DEG_heatmap(res_p0_p10_filter_1,"p0","p10",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1,cluster_columns = T,name_suffix = "_cluster_col")
+tt_DEG_heatmap(res_p10_rp2_filter_1,"p10","rp2",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1,cluster_columns = T,name_suffix = "_cluster_col")
+tt_DEG_heatmap(res_p0_rp2_filter_1,"p0","rp2",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1,cluster_columns = T,name_suffix = "_cluster_col")
+
+```
+
+```{r DEG volcano filter1}
+tt_DEG_volcano(res_p0_p10,"p0","p10","06_DEG_volcano/",lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
+tt_DEG_volcano(res_p10_rp2,"p10","rp2","06_DEG_volcano/",lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
+tt_DEG_volcano(res_p0_rp2,"p0","rp2","06_DEG_volcano/",lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
+
+tt_DEG_volcano_mark(res_p0_p10,"p0","p10","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
+
+tt_DEG_volcano_mark(res_p0_rp2,"p0","rp2","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
+
+tt_DEG_volcano_mark(res_p10_rp2,"p10","rp2","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
+
+tt_DEG_volcano_mark(res_p0_p10,"p0","p10","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_toti,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_toti")
+```
+
+```{r DEG GO KEGG}
+
+dir.create("07_DEG_GO")
+
+sn <- c("p0","p10","rp2")
+for (i in sn){
+  for (j in sn){
+    if (exists(paste0("res_",i,"_",j,"_filter_1"))){
+      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange>0],groupname = paste0("res_",i,"_",j,"_filter_1_up"),filedir = "07_DEG_GO/")
+      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange<0],groupname = paste0("res_",i,"_",j,"_filter_1_down"),filedir = "07_DEG_GO/")
+    }
+  }
+}
+
+```
+
+
+
+
+
+```{r marker_heatmap}
+
+
+heatmap <- Heatmap(matrix = t(scale(t(tpm_DEG_mean[c(genes_2cell_1,genes_2cell_2,genes_4cell,genes_morula,genes_ICM_EPI),]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows =T,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("07_marker/heatmap_cluster_col_stage.pdf"))
+heatmap <- draw(heatmap)
+dev.off()
+
+dir.create("07_marker/marker_all_km")
+
+for (i in 1:20){
+  heatmap <- Heatmap(matrix = t(scale(t(tpm_DEG_mean[genes_marker,]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows =T,cluster_columns = T,
+                                width = unit(4,'inches'),
+                   row_km = i,
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("07_marker/marker_all_km/heatmap_cluster_col_marker_km",i,".pdf"),height = 20)
+heatmap <- draw(heatmap)
+dev.off()
+}
+
+```
+
+```{r p10 cluster}
+dir.create("06_diff_p10")
+
+diff_geneset_filter1 <- c(rownames(res_p10_p0_filter_1),
+                              rownames(res_p10_rp2_filter_1),
+                              rownames(res_p10_M3IN_filter_1),
+                              rownames(res_p10_siM3_filter_1),
+                              rownames(res_p10_siVirma_filter_1),
+                              rownames(res_p10_siNudt21_filter_1),
+                              rownames(res_p10_XEN_filter_1),
+                              rownames(res_p10_TSC_filter_1),
+                              rownames(res_p0_M3IN_filter_1),
+rownames(res_p0_siM3_filter_1),
+rownames(res_p0_siVirma_filter_1),
+rownames(res_p0_siNudt21_filter_1),
+rownames(res_p0_rp2_filter_1),
+rownames(res_p0_TSC_filter_1),
+rownames(res_p0_XEN_filter_1),
+rownames(res_XEN_M3IN_filter_1),
+rownames(res_XEN_siM3_filter_1),
+rownames(res_XEN_siVirma_filter_1),
+rownames(res_XEN_siNudt21_filter_1),
+rownames(res_XEN_rp2_filter_1),
+rownames(res_XEN_TSC_filter_1),
+rownames(res_TSC_M3IN_filter_1),
+rownames(res_TSC_siM3_filter_1),
+rownames(res_TSC_siVirma_filter_1),
+rownames(res_TSC_siNudt21_filter_1),
+rownames(res_TSC_rp2_filter_1),
+rownames(res_rp2_M3IN_filter_1),
+rownames(res_rp2_siM3_filter_1),
+rownames(res_rp2_siVirma_filter_1),
+rownames(res_rp2_siNudt21_filter_1),
+rownames(res_M3IN_siM3_filter_1),
+rownames(res_M3IN_siVirma_filter_1),
+rownames(res_M3IN_siNudt21_filter_1),
+rownames(res_siVirma_siM3_filter_1),
+rownames(res_siVirma_siNudt21_filter_1),
+rownames(res_siM3_siNudt21_filter_1))
+
+diff_geneset_filter1 <- diff_geneset_filter1[!duplicated(diff_geneset_filter1)]
+tpm_diff_p10 <- tpm_DEG_mean[diff_geneset_p10_filter1,]
+
+venn(list(rownames(tpm_diff_p10),
+          c(read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder1_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder2_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder3_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder4_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder5_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder6_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder7_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder8_genes.txt")$V1,
+            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder9_genes.txt")$V1)))
+
+
+set.seed(1000)
+
+for (i in 1:20){
+  heatmap_diff <- Heatmap(matrix = t(scale(t(tpm_diff_p10))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                        row_km = i,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("06_diff_p10/heatmap_cluster_col_diff_km",i,".pdf"))
+heatmap_diff <- draw(heatmap_diff)
+dev.off()
+}
+
+
+########### row_km=10
+dir.create("06_diff_p10/km_10")
+
+
+heatmap_diff <- Heatmap(matrix = t(scale(t(tpm_diff_p10))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                row_km = 15,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("06_diff_p10/km_10/heatmap.pdf"))
+heatmap_diff <- draw(heatmap_diff)
+dev.off()
+
+
+tpm_newOrder1 <- tpm_diff_mean[row_order(heatmap_diff)$`1`,]
+tpm_newOrder2 <- tpm_diff_mean[row_order(heatmap_diff)$`2`,]
+tpm_newOrder3 <- tpm_diff_mean[row_order(heatmap_diff)$`3`,]
+tpm_newOrder4 <- tpm_diff_mean[row_order(heatmap_diff)$`4`,]
+#tpm_newOrder5 <- tpm_diff_mean[row_order(heatmap_diff)$`5`,]
+#tpm_newOrder6 <- tpm_diff_mean[row_order(heatmap_diff)$`6`,]
+#tpm_newOrder7 <- tpm_diff_mean[row_order(heatmap_diff2)$`7`,]
+#tpm_newOrder8 <- tpm_diff_mean[row_order(heatmap_diff2)$`8`,]
+#tpm_newOrder9 <- tpm_diff_mean[row_order(heatmap_diff2)$`9`,]
+
+gene_anno <- HeatmapAnnotation(cluster = c(rep("2",dim(tpm_newOrder2)[1]),
+                                           rep("1",dim(tpm_newOrder1)[1]),
+                                           rep("4",dim(tpm_newOrder4)[1]),
+                                           rep("3",dim(tpm_newOrder3)[1])),which = 'row')
+colnames(tpm_IR_diff_mean)
+heatmap_IR_diff_order <- Heatmap(matrix = t(scale(t(tpm_IR_diff_mean[c(rownames(tpm_newOrder2),
+                                            rownames(tpm_newOrder1),
+                                            rownames(tpm_newOrder4),
+                                            rownames(tpm_newOrder3)),]))),
+        name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = F,cluster_columns = F,
+        left_annotation = gene_anno,
+                                width = unit(3,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf("06_diff_p10/km_4/heatmap_km4_order.pdf")
+heatmap_IR_diff_order <- draw(heatmap_IR_diff_order)
+dev.off()
+
+
+write.table(tpm_newOrder1,"06_diff_p10/km_4/tpm_newOrder1.txt",quote = F)
+write.table(tpm_newOrder2,"06_diff_p10/km_4/tpm_newOrder2.txt",quote = F)
+write.table(tpm_newOrder3,"06_diff_p10/km_4/tpm_newOrder3.txt",quote = F)
+write.table(tpm_newOrder4,"06_diff_p10/km_4/tpm_newOrder4.txt",quote = F)
+
+write.table(rownames(tpm_newOrder1),"06_diff_p10/km_4/newOrder1_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder2),"06_diff_p10/km_4/newOrder2_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder3),"06_diff_p10/km_4/newOrder3_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder4),"06_diff_p10/km_4/newOrder4_genes.txt",quote = F,row.names = F,col.names = F)
+
+
+
+dir.create("06_diff_p10/km_4/01_GO")
+keytypes(org.Mm.eg.db)
+
+
+for (i in 1:4){
+   assign(paste0("Go_",i),transGO(i,"06_diff_p10/km_4/01_GO/"))
+}
+
+for (i in 1:4){
+        assign(paste0("KEGG_",i),transKEGG(i))
+}
+
+```
+
+```{r p10 cluster M3IN}
+dir.create("06_diff_p10_M3IN")
+
+diff_geneset_filter1 <- c(rownames(res_p10_p0_filter_1),
+                              rownames(res_p10_rp2_filter_1),
+                              rownames(res_p10_M3IN_filter_1),
+                              rownames(res_p10_siNudt21_filter_1),
+                              rownames(res_p10_XEN_filter_1),
+                              rownames(res_p10_TSC_filter_1),
+                              rownames(res_p0_M3IN_filter_1),
+rownames(res_p0_siNudt21_filter_1),
+rownames(res_p0_rp2_filter_1),
+rownames(res_p0_TSC_filter_1),
+rownames(res_p0_XEN_filter_1),
+rownames(res_XEN_M3IN_filter_1),
+rownames(res_XEN_siNudt21_filter_1),
+rownames(res_XEN_rp2_filter_1),
+rownames(res_XEN_TSC_filter_1),
+rownames(res_TSC_M3IN_filter_1),
+rownames(res_TSC_siNudt21_filter_1),
+rownames(res_TSC_rp2_filter_1),
+rownames(res_rp2_M3IN_filter_1),
+rownames(res_rp2_siNudt21_filter_1),
+rownames(res_M3IN_siNudt21_filter_1))
+
+diff_geneset_filter1 <- diff_geneset_filter1[!duplicated(diff_geneset_filter1)]
+tpm_diff_p10_M3IN <- tpm_DEG_mean[diff_geneset_p10_filter1,c(1,2,5:9)]
+
+set.seed(1000)
+
+pdf(paste0("06_diff_p10_M3IN/heatmap_cluster_col_diff_km.pdf"))
+for (i in 1:20){
+  heatmap_diff <- Heatmap(matrix = na.omit(t(scale(t(tpm_diff_p10_M3IN)))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                        row_km = i,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+
+heatmap_diff <- draw(heatmap_diff)
+
+}
+dev.off()
+
+########### row_km=10
+dir.create("06_diff_p10/km_10")
+
+
+heatmap_diff <- Heatmap(matrix = t(scale(t(tpm_diff_p10))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                row_km = 15,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("06_diff_p10/km_10/heatmap.pdf"))
+heatmap_diff <- draw(heatmap_diff)
+dev.off()
+
+
+tpm_newOrder1 <- tpm_diff_mean[row_order(heatmap_diff)$`1`,]
+tpm_newOrder2 <- tpm_diff_mean[row_order(heatmap_diff)$`2`,]
+tpm_newOrder3 <- tpm_diff_mean[row_order(heatmap_diff)$`3`,]
+tpm_newOrder4 <- tpm_diff_mean[row_order(heatmap_diff)$`4`,]
+#tpm_newOrder5 <- tpm_diff_mean[row_order(heatmap_diff)$`5`,]
+#tpm_newOrder6 <- tpm_diff_mean[row_order(heatmap_diff)$`6`,]
+#tpm_newOrder7 <- tpm_diff_mean[row_order(heatmap_diff2)$`7`,]
+#tpm_newOrder8 <- tpm_diff_mean[row_order(heatmap_diff2)$`8`,]
+#tpm_newOrder9 <- tpm_diff_mean[row_order(heatmap_diff2)$`9`,]
+
+gene_anno <- HeatmapAnnotation(cluster = c(rep("2",dim(tpm_newOrder2)[1]),
+                                           rep("1",dim(tpm_newOrder1)[1]),
+                                           rep("4",dim(tpm_newOrder4)[1]),
+                                           rep("3",dim(tpm_newOrder3)[1])),which = 'row')
+colnames(tpm_IR_diff_mean)
+heatmap_IR_diff_order <- Heatmap(matrix = t(scale(t(tpm_IR_diff_mean[c(rownames(tpm_newOrder2),
+                                            rownames(tpm_newOrder1),
+                                            rownames(tpm_newOrder4),
+                                            rownames(tpm_newOrder3)),]))),
+        name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = F,cluster_columns = F,
+        left_annotation = gene_anno,
+                                width = unit(3,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf("06_diff_p10/km_4/heatmap_km4_order.pdf")
+heatmap_IR_diff_order <- draw(heatmap_IR_diff_order)
+dev.off()
+
+
+write.table(tpm_newOrder1,"06_diff_p10/km_4/tpm_newOrder1.txt",quote = F)
+write.table(tpm_newOrder2,"06_diff_p10/km_4/tpm_newOrder2.txt",quote = F)
+write.table(tpm_newOrder3,"06_diff_p10/km_4/tpm_newOrder3.txt",quote = F)
+write.table(tpm_newOrder4,"06_diff_p10/km_4/tpm_newOrder4.txt",quote = F)
+
+write.table(rownames(tpm_newOrder1),"06_diff_p10/km_4/newOrder1_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder2),"06_diff_p10/km_4/newOrder2_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder3),"06_diff_p10/km_4/newOrder3_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder4),"06_diff_p10/km_4/newOrder4_genes.txt",quote = F,row.names = F,col.names = F)
+
+
+
+dir.create("06_diff_p10/km_4/01_GO")
+keytypes(org.Mm.eg.db)
+
+
+for (i in 1:4){
+   assign(paste0("Go_",i),transGO(i,"06_diff_p10/km_4/01_GO/"))
+}
+
+for (i in 1:4){
+        assign(paste0("KEGG_",i),transKEGG(i))
+}
+
+```
+
+
+```{r reverse}
+length(rownames(res_P12_P16)[res_P12_P16$log2FoldChange>0.58])
+length(rownames(res_P13_shDKC1)[res_P13_shDKC1$log2FoldChange < -0.58])
+length(intersect(rownames(res_P12_P16)[res_P12_P16$log2FoldChange>0.58],rownames(res_P13_shDKC1)[res_P13_shDKC1$log2FoldChange < -0.58]))
+
+length(rownames(res_P12_P16)[res_P12_P16$log2FoldChange>0.58])
+length(rownames(res_P13_shDKC1)[res_P13_shDKC1$log2FoldChange >0.58])
+length(intersect(rownames(res_P12_P16)[res_P12_P16$log2FoldChange>0.58],rownames(res_P13_shDKC1)[res_P13_shDKC1$log2FoldChange >0.58]))
+```
+
+```{r senescense marker from NAR2019 paper}
+FAM129A
+HIST1H1E
+HIST1H1D
+HIST1H1A
+HIST2H2AB
+ITPRIPL1
+tpm_matrix["PDL1M1",]
+
+tpm_matrix["CCND3",]
+
+tpm_matrix["PTCHD4",]
+
+
+gene_anno <- ComplexHeatmap::HeatmapAnnotation(express = filter[rownames(tpm_filter),"express"],which = 'row')
+heatmap_IR_diff <- Heatmap(matrix = t(scale(t(tpm_IR_diff_mean))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                row_km = 4,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("06_diff_p10/km_4/heatmap_km4.pdf"))
+heatmap_IR_diff <- draw(heatmap_IR_diff)
+dev.off()
+```
+
+```{r GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE}
+GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE <- c("AKT3","MIR543","CDK6","PLK2","SIRT1","ABL1","FBXO5","MIR17","MAP3K3","MIF","YBX1","FZR1","SIRT6","SLC30A10","PTEN","RBL1","BCL6","TBX2","MIR590","TERC","TERF2","TERT","TWIST1","WNT1","ZKSCAN3","HMGA2")
+table(GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE %in% rownames(tpm_matrix))
+tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,]
+dir.create("07_marker_heatmap")
+pdf("07_marker_heatmap/GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE.pdf")
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,5:8]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE_RS1.pdf")
+heatmap_P12_P16 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap_P13_shDKC1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap_P12_P16+heatmap_P13_shDKC1)
+draw(heatmap_P13_shDKC1+heatmap_P12_P16)
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE_IR1.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE_IR2.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+GOBP_CELLULAR_SENESCENCE <- c("AKT3","MIR543","CDK2","CDK6","CDKN1A","ZMPSTE24","CDKN1B","CDKN2A","CDKN2B","CITED2","KAT5","PLK2","NEK6","ZNF277","CGAS","MAPK14","VASH1","PLA2R1","SMC5","SIRT1","MORC3","NUP62","ABL1","ULK3","RSL1D1","FBXO5","MAGEA2B","NSMCE2","H2AX","HLA-G","HMGA1","HRAS","ID2","IGF1R","ING2","KIR2DL4","ARG2","LMNA","ARNTL","MIR10A","MIR146A","MIR17","MIR188","MIR217","MIR22","MIR34A","MAGEA2","MAP3K3","MAP3K5","MIF","MNT","ATM","NPM1","YBX1","OPA1","PAWR","ABI3","FZR1","WNT16","SIRT6","PML","PRMT6","PRELP","SLC30A10","PRKCD","MAPK8","MAPK11","MAPK9","MAPK10","MAP2K1","MAP2K3","MAP2K6","MAP2K7","B2M","ZMIZ1","PTEN","MIR20B","RBL1","BCL6","MAP2K4","BMPR1A","SPI1","SRF","BRCA2","NEK4","TBX2","TBX3","MIR590","TERC","TERF2","TERT","TP53","TWIST1","WNT1","WRN","SMC6","KAT6A","ZKSCAN3","HMGA2","CALR","YPEL3","ECRG4","MAPKAPK5","TP63","PNPT1","DNAJA3","EEF1E1","NUAK1")
+
+GOBP_STRESS_INDUCED_PREMATURE_SENESCENCE <- c("CDKN1A","MAPK14","PLA2R1","SIRT1","ARNTL","WNT16","TP53","MAPKAPK5")
+GOBP_REPLICATIVE_SENESCENCE <- c("CDKN1A","CDKN2A","CHEK1","CHEK2","ROMO1","ERCC1","PLA2R1","MIR21","MME","ATM","SERPINE1","WNT16","ATR","TERT","TP53","WRN","CTC1")
+GOBP_REGULATION_OF_CELLULAR_SENESCENCE <- c("AKT3","MIR543","CDK6","ZMPSTE24","PLK2","NEK6","ZNF277","CGAS","VASH1","SIRT1","MORC3","ABL1","RSL1D1","FBXO5","HLA-G","ING2","KIR2DL4","ARG2","ARNTL","MIR10A","MIR146A","MIR17","MIR188","MIR217","MIR22","MIR34A","MAP3K3","MIF","YBX1","PAWR","ABI3","FZR1","SIRT6","SLC30A10","B2M","PTEN","MIR20B","RBL1","BCL6","BMPR1A","NEK4","TBX2","MIR590","TERC","TERF2","TERT","TP53","TWIST1","WNT1","ZKSCAN3","HMGA2","YPEL3","PNPT1","EEF1E1","NUAK1")
+GOBP_POSITIVE_REGULATION_OF_CELLULAR_SENESCENCE <- c("CGAS","SIRT1","MORC3","HLA-G","KIR2DL4","ARG2","MIR10A","MIR146A","MIR188","MIR217","MIR22","MIR34A","PAWR","ABI3","B2M","MIR20B","TP53","YPEL3","EEF1E1")
+
+msigdb <- data.frame(term=c(rep("NEGATIVE",length(GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE)),
+                            rep("POSITIVE",length(GOBP_POSITIVE_REGULATION_OF_CELLULAR_SENESCENCE)),
+                            rep("REGULATION",length(GOBP_REGULATION_OF_CELLULAR_SENESCENCE)),
+                            rep("STRESS_INDUCED",length(GOBP_STRESS_INDUCED_PREMATURE_SENESCENCE)),
+                            rep("REPLICATIVE",length(GOBP_REPLICATIVE_SENESCENCE)),
+                            rep("SENESCENCE",length(GOBP_CELLULAR_SENESCENCE))),
+                     gene=c(GOBP_NEGATIVE_REGULATION_OF_CELLULAR_SENESCENCE,
+                            GOBP_POSITIVE_REGULATION_OF_CELLULAR_SENESCENCE,
+                            GOBP_REGULATION_OF_CELLULAR_SENESCENCE,
+                            GOBP_STRESS_INDUCED_PREMATURE_SENESCENCE,
+                            GOBP_REPLICATIVE_SENESCENCE,
+                            GOBP_CELLULAR_SENESCENCE))
+
+dir.create("08_marker_gsea")
+############ day10_UP_M3IN
+
+pdf("08_marker_gsea/gsea_senescence_marker.pdf")
+res_P12_P16_list <- res_P12_P16$log2FoldChange
+
+names(res_P12_P16_list) <- rownames(res_P12_P16)
+
+res_P12_P16_list <- sort(res_P12_P16_list,decreasing = T)
+
+
+gsea <- GSEA(res_P12_P16_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="P12_P16",pvalue_table = T,base_size = 10)
+
+res_P13_shDKC1_list <- res_P13_shDKC1$log2FoldChange
+
+names(res_P13_shDKC1_list) <- rownames(res_P13_shDKC1)
+
+res_P13_shDKC1_list <- sort(res_P13_shDKC1_list,decreasing = T)
+
+
+gsea <- GSEA(res_P13_shDKC1_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="P13_shDKC1",pvalue_table = T,base_size = 10)
+
+res_IC_IR_list <- res_IC_IR$log2FoldChange
+
+names(res_IC_IR_list) <- rownames(res_IC_IR)
+
+res_IC_IR_list <- sort(res_IC_IR_list,decreasing = T)
+
+
+gsea <- GSEA(res_IC_IR_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="IC_IR",pvalue_table = T,base_size = 10)
+
+res_IR_shDKC1_list <- res_IR_shDKC1$log2FoldChange
+
+names(res_IR_shDKC1_list) <- rownames(res_IR_shDKC1)
+
+res_IR_shDKC1_list <- sort(res_IR_shDKC1_list,decreasing = T)
+
+
+gsea <- GSEA(res_IR_shDKC1_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="IR_shDKC1",pvalue_table = T,base_size = 10)
+
+res_IC_shDKC1_list <- res_IC_shDKC1$log2FoldChange
+
+names(res_IC_shDKC1_list) <- rownames(res_IC_shDKC1)
+
+res_IC_shDKC1_list <- sort(res_IC_shDKC1_list,decreasing = T)
+
+
+gsea <- GSEA(res_IC_shDKC1_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="IC_shDKC1",pvalue_table = T,base_size = 10)
+
+res_IC_IR_shCtrl_list <- res_IC_IR_shCtrl$log2FoldChange
+
+names(res_IC_IR_shCtrl_list) <- rownames(res_IC_IR_shCtrl)
+
+res_IC_IR_shCtrl_list <- sort(res_IC_IR_shCtrl_list,decreasing = T)
+
+
+gsea <- GSEA(res_IC_IR_shCtrl_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
+
+gseaplot2(gsea,geneSetID=1:6,
+          title="IC_IR_shCtrl",pvalue_table = T,base_size = 10)
+
+dev.off()
+
+ggsave("08_marker_gsea/P12_P16.pdf")
+
+```
+
+```{r GOBP_REPLICATIVE_SENESCENCE}
+
+table(GOBP_REPLICATIVE_SENESCENCE %in% rownames(tpm_matrix))
+tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,]
+dir.create("07_marker_heatmap")
+pdf("07_marker_heatmap/GOBP_REPLICATIVE_SENESCENCE.pdf")
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,5:8]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_REPLICATIVE_SENESCENCE_RS1.pdf")
+heatmap_P12_P16 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap_P13_shDKC1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap_P12_P16+heatmap_P13_shDKC1)
+draw(heatmap_P13_shDKC1+heatmap_P12_P16)
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_REPLICATIVE_SENESCENCE_IR1.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_REPLICATIVE_SENESCENCE_IR2.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_REPLICATIVE_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+
+
+```
+
+```{r GOBP_CELLULAR_SENESCENCE}
+
+table(GOBP_CELLULAR_SENESCENCE %in% rownames(tpm_matrix))
+tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,]
+dir.create("07_marker_heatmap")
+pdf("07_marker_heatmap/GOBP_CELLULAR_SENESCENCE.pdf")
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,5:8]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_CELLULAR_SENESCENCE_RS1.pdf")
+heatmap_P12_P16 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,13:16]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap_P13_shDKC1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,17:20]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap_P12_P16+heatmap_P13_shDKC1)
+draw(heatmap_P13_shDKC1+heatmap_P12_P16)
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_CELLULAR_SENESCENCE_IR1.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,1:4]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+pdf("07_marker_heatmap/GOBP_CELLULAR_SENESCENCE_IR2.pdf")
+heatmap1 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,c(5,6,9,10)]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap2 <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% GOBP_CELLULAR_SENESCENCE,9:12]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(2,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+draw(heatmap1+heatmap2)
+draw(heatmap2+heatmap1)
+
+dev.off()
+
+
+
+```
+
+```{r site_all_overlap}
+site_info_all <- read.delim("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/06_site_filter/04_site_info_final/site_info_anno_merge.txt")
+
+table(GOBP_CELLULAR_SENESCENCE %in% site_info_all$Gene.Name)
+
+```
+
+```{r lfc cluster}
+dir.create("06_lfc_rev")
+tt_wt(rownames(res_P12_P16[res_P12_P16$log2FoldChange>0.58 & res_P13_shDKC1$log2FoldChange < -0.3,]),"06_lfc_rev/P16_up058_P13_shDKC1_down030.txt")
+
+tt_wt(rownames(res_P12_P16[res_P12_P16$log2FoldChange< -0.58 & res_P13_shDKC1$log2FoldChange >0.3,]),"06_lfc_rev/P16_down058_P13_shDKC1_up030.txt")
+
+tt_wt(rownames(res_IC_IR_shCtrl[res_IC_IR_shCtrl$log2FoldChange>0.58 & res_IR_shDKC1$log2FoldChange < -0.3,]),"06_lfc_rev/IC_IR_shCtrl_up058_IR_shDKC1_down030.txt")
+
+tt_wt(rownames(res_IC_IR_shCtrl[res_IC_IR_shCtrl$log2FoldChange< -0.58 & res_IR_shDKC1$log2FoldChange >0.3,]),"06_lfc_rev/IC_IR_shCtrl_down058_IR_shDKC1_up030.txt")
+
+tt_wt(rownames(res_IC_IR[res_IC_IR$log2FoldChange>0.58 & res_IR_shDKC1$log2FoldChange < -0.3,]),"06_lfc_rev/IC_IR_up058_IR_shDKC1_down030.txt")
+
+tt_wt(rownames(res_IC_IR[res_IC_IR$log2FoldChange< -0.58 & res_IR_shDKC1$log2FoldChange >0.3,]),"06_lfc_rev/IC_IR_down058_IR_shDKC1_up030.txt")
+
+res_lfc_summary <- data.frame(P12_P16=res_P12_P16$log2FoldChange,
+                              P13_shDKC1=res_P13_shDKC1$log2FoldChange,
+                              IC_IR=res_IC_IR$log2FoldChange,
+                              IC_IR_shCtrl=res_IC_IR_shCtrl$log2FoldChange,
+                              IC_shDKC1=res_IC_shDKC1$log2FoldChange,
+                              IR_shDKC1=res_IR_shDKC1$log2FoldChange)
+
+plot(res_lfc_summary)
+ggplot()
+
+table(res_P12_P16$log2FoldChange>0.58 & res_P13_shDKC1$log2FoldChange>0.3)
+table(res_P12_P16$log2FoldChange< -0.58 & res_P13_shDKC1$log2FoldChange < -0.58)
+table(res_P12_P16$log2FoldChange< -0.58 & res_P13_shDKC1$log2FoldChange>0.58)
+```
+
+
+
+```{r diff_M3IN cluster}
+dir.create("05_diff_M3IN")
+M3IN_diff_geneset_filter1 <- c(rownames(res_M3IN_0h_4h_filter_1),
+                       rownames(res_M3IN_4h_12h_filter_1),
+                       rownames(res_M3IN_0h_12h_filter_1))
+
+M3IN_diff_geneset_filter1 <- M3IN_diff_geneset_filter1[!duplicated(M3IN_diff_geneset_filter1)]
+
+tpm_M3IN_diff <- tpm_matrix[M3IN_diff_geneset_filter1,]
+
+
+set.seed(1000)
+tpm_M3IN_diff_mean <- data.frame(M3IN_0h=apply(tpm_M3IN_diff[,1:2],1,mean),
+                                 M3IN_4h=apply(tpm_M3IN_diff[,3:4],1,mean),
+                                 M3IN_12h=apply(tpm_M3IN_diff[,5:6],1,mean))
+########### row_km=6
+dir.create("05_diff_M3IN/km_4")
+
+heatmap_M3IN_diff <- Heatmap(matrix = t(scale(t(tpm_M3IN_diff_mean))),name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                row_km = 6,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("05_diff_M3IN/km_4/heatmap_km6.pdf"))
+heatmap_M3IN_diff <- draw(heatmap_M3IN_diff)
+dev.off()
+
+
+tpm_newOrder1 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`1`,]
+tpm_newOrder2 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`2`,]
+tpm_newOrder3 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`3`,]
+tpm_newOrder4 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`4`,]
+tpm_newOrder5 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`5`,]
+tpm_newOrder6 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff)$`6`,]
+#tpm_newOrder7 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff2)$`7`,]
+#tpm_newOrder8 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff2)$`8`,]
+#tpm_newOrder9 <- tpm_M3IN_diff_mean[row_order(heatmap_M3IN_diff2)$`9`,]
+
+gene_anno <- HeatmapAnnotation(cluster = c(rep("2",dim(tpm_newOrder2)[1]),
+                                           rep("1",dim(tpm_newOrder1)[1]),
+                                           rep("3",dim(tpm_newOrder3)[1]),
+                                           rep("6",dim(tpm_newOrder6)[1]),
+                                           rep("5",dim(tpm_newOrder5)[1]),
+                                           rep("4",dim(tpm_newOrder4)[1])),which = 'row')
+colnames(tpm_M3IN_diff_mean)
+heatmap_M3IN_diff_order <- Heatmap(matrix = t(scale(t(tpm_M3IN_diff_mean[c(rownames(tpm_newOrder2),
+                                            rownames(tpm_newOrder1),
+                                            rownames(tpm_newOrder3),
+                                            rownames(tpm_newOrder6),
+                                            rownames(tpm_newOrder5),
+                                            rownames(tpm_newOrder4)),]))),
+        name="z-score",
+                                show_column_names = TRUE,show_row_names=FALSE,
+                                cluster_rows = F,cluster_columns = F,
+        left_annotation = gene_anno,
+                                width = unit(3,'inches'),
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf("05_diff_M3IN/km_4/heatmap_km6_order.pdf")
+heatmap_M3IN_diff_order <- draw(heatmap_M3IN_diff_order)
+dev.off()
+
+
+write.table(tpm_newOrder1,"05_diff_M3IN/km_4/tpm_newOrder1.txt",quote = F)
+write.table(tpm_newOrder2,"05_diff_M3IN/km_4/tpm_newOrder2.txt",quote = F)
+write.table(tpm_newOrder3,"05_diff_M3IN/km_4/tpm_newOrder3.txt",quote = F)
+write.table(tpm_newOrder4,"05_diff_M3IN/km_4/tpm_newOrder4.txt",quote = F)
+write.table(tpm_newOrder5,"05_diff_M3IN/km_4/tpm_newOrder5.txt",quote = F)
+write.table(tpm_newOrder6,"05_diff_M3IN/km_4/tpm_newOrder6.txt",quote = F)
+
+write.table(rownames(tpm_newOrder1),"05_diff_M3IN/km_4/newOrder1_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder2),"05_diff_M3IN/km_4/newOrder2_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder3),"05_diff_M3IN/km_4/newOrder3_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder4),"05_diff_M3IN/km_4/newOrder4_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder5),"05_diff_M3IN/km_4/newOrder5_genes.txt",quote = F,row.names = F,col.names = F)
+write.table(rownames(tpm_newOrder6),"05_diff_M3IN/km_4/newOrder6_genes.txt",quote = F,row.names = F,col.names = F)
+
+options(stringsAsFactors = FALSE)
+library(ggrepel)
+library(stringr)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(ggplot2)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+keytypes(org.Mm.eg.db)
+
+library(data.table)
+
+# 1. id transform
+# biomart
+library(biomaRt)
+library(data.table)
+# bitr in clusterProfiler
+
+dir.create("05_diff_M3IN/km_4/01_GO")
+
+
+
+for (i in 1:6){
+   assign(paste0("Go_",i),transGO(i))
+}
+
+
+
+
+for (i in 1:6){
+        assign(paste0("KEGG_",i),transKEGG(i))
+}
+```
+
+```{r}
+library(ComplexHeatmap)
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% read.table("~/Data/01_TC1/00_gene_set/Toti_genes")$V1,]))),name="z-score",
+        show_column_names = TRUE,show_row_names=T,
+        cluster_rows = T,cluster_columns = F,
+        width = unit(4,'inches'),
+        col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                 colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% read.table("~/Data/01_TC1/00_gene_set/Pluri_genes")$V1,]))),name="z-score",
+        show_column_names = TRUE,show_row_names=T,
+        cluster_rows = T,cluster_columns = F,
+        width = unit(4,'inches'),
+        col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                 colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% read.table("~/Data/01_TC1/00_gene_set/PrE_genes")$V1,]))),name="z-score",
+        show_column_names = TRUE,show_row_names=T,
+        cluster_rows = T,cluster_columns = F,
+        width = unit(4,'inches'),
+        col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                 colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% read.table("~/Data/01_TC1/00_gene_set/Trophectoderm_markers")$V1,]))),name="z-score",
+        show_column_names = TRUE,show_row_names=T,
+        cluster_rows = T,cluster_columns = F,
+        width = unit(4,'inches'),
+        col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                 colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+```

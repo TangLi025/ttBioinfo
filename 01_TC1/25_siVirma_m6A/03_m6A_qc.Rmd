@@ -1,0 +1,383 @@
+---
+title: "r01_m6A_qc"
+author: "Tang Li"
+date: '2022-11-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ChIPpeakAnno)
+library(ggplot2)
+library(ggpubr)
+library(ggradar)
+require(ggseqlogo)
+library(Guitar)
+library(GenomicFeatures)
+library(patchwork)
+library(QNB)
+library(reshape2)
+library(rtracklayer)
+library(Rsubread)
+library(tidyverse)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/25_siVirma_m6A/")
+```
+
+### homer annotation using basic_pc_lnc.gtf
+
+
+```{r anno_distribution}
+
+# read annotation file from macs2 and homer
+p0_anno <- read.delim('05_annotation/p0_annotation.txt',header = T)
+p10_anno <- read.delim('05_annotation/p10_annotation.txt',header = T)
+rp2_anno <- read.delim('05_annotation/rp2_annotation.txt',header = T)
+
+# save as list
+df <- list(p0 = p0_anno$Annotation,p10 = p10_anno$Annotation,rp2 = rp2_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('p0','p10','rp2')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('p0','p10','rp2'))
+
+pdf("./05_annotation/02_Distribution_of_m6A_peaks.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,2,0.5,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+### homer mm39 to mm10
+```{bash}
+mkdir 05_annotation/01_commonpeak_mm10
+for sample in {p0,p10,rp2}
+do
+/disk/user_09/software/UCSCtools/liftOver /disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks/${sample}_rep1_rep2_common_peaks.bed /disk/user_09/reference/liftover/mm39ToMm10.over.chain.gz 05_annotation/01_commonpeak_mm10/${sample}_common_peaks_mm10.bed 05_annotation/01_commonpeak_mm10/${sample}_common_peaks_mm10_unMapped.bed &
+done
+```
+
+```{r anno_distribution mm10}
+
+# read annotation file from macs2 and homer
+p0_anno <- read.delim('05_annotation/mm10/p0_annotation.txt',header = T)
+p10_anno <- read.delim('05_annotation/mm10/p10_annotation.txt',header = T)
+rp2_anno <- read.delim('05_annotation/mm10/rp2_annotation.txt',header = T)
+
+# save as list
+df <- list(p0 = p0_anno$Annotation,p10 = p10_anno$Annotation,rp2 = rp2_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('p0','p10','rp2')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('p0','p10','rp2'))
+
+pdf("./05_annotation/03_Distribution_of_m6A_peaks_mm10.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+```{r radar_plot}
+type_comb_perc <- type_comb[,1:8]/rowSums(type_comb[,1:8])
+type_comb_perc <- cbind(name=type_comb$name,type_comb_perc)
+type_comb_perc
+
+pdf("05_annotation/04_radar_mm10.pdf")
+ggradar(type_comb_perc[1:2,],grid.max=0.5,grid.mid = 0.25,
+        values.radar = c("","25%","50%"),
+        legend.position = "top")
+dev.off()
+```
+
+### metagene
+```{r metagene}
+common_peak_dir <- "/disk/user_09/Data/01_TC1/user_08_TC1/05_bam_change_index_hisat2/01_bam_sorted/10_bed_merge/00_common_peaks"
+p0_common_peaks <- import(file.path(common_peak_dir,"p0_rep1_rep2_common_peaks.bed"))
+p10_common_peaks <- import(file.path(common_peak_dir,"p10_rep1_rep2_common_peaks.bed"))
+rp2_common_peaks <- import(file.path(common_peak_dir,"rp2_rep1_rep2_common_peaks.bed"))
+
+# read bed file
+stBedFiles <- list(file.path(common_peak_dir,"p0_rep1_rep2_common_peaks.bed"),
+                   file.path(common_peak_dir,"p10_rep1_rep2_common_peaks.bed"),
+                   file.path(common_peak_dir,"rp2_rep1_rep2_common_peaks.bed"))
+
+# prepare annotation file
+# txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+gtffile <- file.path("/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+# draw
+pdf("./04_metagene/metagene_profiles_of_m6A_peak.pdf")
+GuitarPlot(txTxdb = txdb,
+           txGuitarTxdbSaveFile = "txGuitarTxdbSaveFile",
+                   stBedFiles = stBedFiles,
+                   headOrtail = T,
+                   enableCI = FALSE,
+                   mapFilterTranscript = TRUE,
+                   pltTxType = c("mrna"),
+                   stGroupName = c("p0","p10","rp2"))
+dev.off()
+
+p <- GuitarPlot(txTxdb = txdb,
+                   stBedFiles = stBedFiles,
+                   headOrtail = F,
+                   enableCI = FALSE,
+                   mapFilterTranscript = T,
+                   pltTxType = c("mrna"),
+                   stGroupName = c("p0","p10","rp2"))
+
+pdf("./04_metagene/metagene_profiles_of_m6A_peak2.pdf")
+
+p+theme_bw()+
+  theme(plot.margin = unit(c(4,0.5,4,0.5),"cm"))
+dev.off()
+
+
+
+```
+
+
+### motif
+```{r}
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/p0/homerResults/motif23.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+p0_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("p0")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/p10/homerResults/motif24.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+p10_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("p10")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/01_motif/rp2/homerResults/motif8.similar1.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+rp2_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("rp2")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pdf("03_motif_logo/01_motif_logo.pdf",width = 8,height = 9)
+p0_motif / p10_motif / rp2_motif
+dev.off()
+
+```
+
+### QNB peak
+
+```{r QNB}
+
+bam_dir <- "/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/11_bam_merge/"
+sample_name <- paste(rep(c("p10","p0","rp2"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/11_bam_merge/flagstat/reads_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(5,6,7,8,1,2,3,4,13,14,15,16)]
+
+# When size.factor is not NA
+total_number_reads_p10_ip <- c(63139881,69162349)
+total_number_reads_p0_ip <- c(67542625,52345318)
+total_number_reads_rp2_ip <- c(78116866,66711470)
+total_number_reads_p10_input <- c(57358338,70205279)
+total_number_reads_p0_input <- c(41608064,68341489)
+total_number_reads_rp2_input <- c(70496756,70107156)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_p10_ip,
+                                  total_number_reads_p0_ip,
+                                  total_number_reads_rp2_ip,
+                                  total_number_reads_p10_input,
+                                  total_number_reads_p0_input,
+                                  total_number_reads_rp2_input))))
+
+nf_spikein <- c(0.843785559,0.870344958,1.04097382,1.018719987,1.130899977,1.095275699)
+
+dir.create("07_m6A_peak_QNB")
+```
+
+## M3IN p10 p0
+```{r gene featureCounts}
+
+
+
+## M3IN_p10_p0
+M3IN_p10_p0_fc <- featureCounts(files=bamfiles[1:8],
+                               annot.ext = '/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/10_bed_merge/02_merge_peaks/p0p10.merge.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_p10_p0_counts <- M3IN_p10_p0_fc$counts
+colnames(M3IN_p10_p0_counts) <- sample_name[1:8]
+
+tt_wt(M3IN_p10_p0_counts,"07_m6A_peak_QNB/M3IN_p10_p0_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_p10_p0_counts)
+
+table(rowSums(M3IN_p10_p0_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_p10_p0_counts_filter <- M3IN_p10_p0_counts[rowSums(M3IN_p10_p0_counts>10)>=2,]
+M3IN_p10_p0_counts_filter <- M3IN_p10_p0_counts
+
+```
+
+```{r M3IN p10 p0}
+M3IN_p10_ip_p10_p0_counts = M3IN_p10_p0_counts[,3:4]
+M3IN_p10_input_p10_p0_counts = M3IN_p10_p0_counts[,1:2]
+M3IN_p0_ip_p10_p0_counts = M3IN_p10_p0_counts[,7:8]
+M3IN_p0_input_p10_p0_counts = M3IN_p10_p0_counts[,5:6]
+
+head(M3IN_p10_ip_p10_p0_counts)
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_p0_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_p0_input/standard_library_size)
+
+dir.create("07_m6A_peak_QNB/M3IN_p10_p0")
+result_p10_p0 = qnbtest(M3IN_p10_ip_p10_p0_counts, M3IN_p0_ip_p10_p0_counts, M3IN_p10_input_p10_p0_counts, M3IN_p0_input_p10_p0_counts, mode="per-condition",output.dir = "07_m6A_peak_QNB/M3IN_p10_p0",size.factor = size.factor.spikein)
+tt_wt(result_p10_p0,"07_m6A_peak_QNB/M3IN_p10_p0/result_p10_p0.txt",row.names = T,col.names = T)
+
+```
+
+## M3IN_p10_rp2
+```{r gene featureCounts cpm}
+
+M3IN_p10_rp2_fc <- featureCounts(files=bamfiles[c(1:4,9:12)],
+                               annot.ext = '/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/10_bed_merge/02_merge_peaks/rp2p10.merge.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_p10_rp2_counts <- M3IN_p10_rp2_fc$counts
+colnames(M3IN_p10_rp2_counts) <- sample_name[c(1:4,9:12)]
+
+tt_wt(M3IN_p10_rp2_counts,"07_m6A_peak_QNB/M3IN_p10_rp2_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_p10_rp2_counts)
+
+table(rowSums(M3IN_p10_rp2_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_p10_rp2_counts_filter <- M3IN_p10_rp2_counts[rowSums(M3IN_p10_rp2_counts>10)>=2,]
+M3IN_p10_rp2_counts_filter <- M3IN_p10_rp2_counts
+
+```
+
+```{r M3IN p10 rp2}
+
+M3IN_p10_ip_p10_rp2_counts = M3IN_p10_rp2_counts[,3:4]
+M3IN_p10_input_p10_rp2_counts = M3IN_p10_rp2_counts[,1:2]
+M3IN_rp2_ip_p10_rp2_counts = M3IN_p10_rp2_counts[,7:8]
+M3IN_rp2_input_p10_rp2_counts = M3IN_p10_rp2_counts[,5:6]
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_rp2_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_rp2_input/standard_library_size)
+
+dir.create("07_m6A_peak_QNB/M3IN_p10_rp2")
+result_p10_rp2 = qnbtest(M3IN_p10_ip_p10_rp2_counts, M3IN_rp2_ip_p10_rp2_counts, M3IN_p10_input_p10_rp2_counts, M3IN_rp2_input_p10_rp2_counts, mode="per-condition",output.dir = "07_m6A_peak_QNB/M3IN_p10_rp2",size.factor = size.factor.spikein)
+
+tt_wt(result_p10_rp2,"07_m6A_peak_QNB/M3IN_p10_rp2/result_p10_rp2.txt",row.names = T,col.names = T)
+
+```
+
+
+
+

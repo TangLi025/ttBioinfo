@@ -1,0 +1,98 @@
+SAMPLE=["P0_input","P0_IP_1","P0_IP_2","P0_IP_3","P9_input","P9_IP_1","P9_IP_2","P9_IP_3"]
+
+READ=["1","2"]
+
+METHOD=["raw","dedup"]
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/rRNA_mm39/rRNA"
+
+MAPPING_THREADS = 10
+
+rule all:
+  input:
+    expand("02_fastq_derRNA/dedup_vs/00_derRNA_fastq/{sample}_1.fq.gz",sample=SAMPLE),
+    expand("02_fastq_derRNA/raw_vs/00_derRNA_fastq/{sample}_1.fq.gz",sample=SAMPLE),
+    expand("info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/multiqc_report.html",method=METHOD)
+
+    
+rule bowtie2_mapping_dedup:
+  input:
+    "01_fastp/03_trim_umi/{sample}_1.fq.gz",
+    "01_fastp/03_trim_umi/{sample}_2.fq.gz"
+  output:
+    R1="02_fastq_derRNA/dedup_vs/00_derRNA_fastq/{sample}_1.fq.gz",
+    R2="02_fastq_derRNA/dedup_vs/00_derRNA_fastq/{sample}_2.fq.gz",
+    bam="02_fastq_derRNA/dedup_vs/01_bam_raw/{sample}.bam",
+    summary="info/02_fastq_derRNA/dedup_vs/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX_rRNA,
+    outname="02_fastq_derRNA/dedup_vs/00_derRNA_fastq/{sample}_%.fq.gz"    
+  log:
+    "logs/02_fastq_derRNA/dedup_vs/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --very-sensitive \
+    --un-conc-gz {params.outname} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {output.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bowtie2_mapping_fastqc:
+  input:
+    "02_fastq_derRNA/{method}_vs/00_derRNA_fastq/{sample}_{read}.fq.gz"
+  output:
+    "info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/{sample}_{read}_fastqc.html",
+    "info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/{sample}_{read}_fastqc.zip"
+  log:
+    "logs/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/{sample}_{read}.log"
+  threads: 1
+  params:
+    out_dir="info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule bowtie2_mapping_multiqc:
+  input:
+    expand("info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/{sample}_{read}_fastqc.html",method="{method}",sample=SAMPLE,read=READ),
+    expand("info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/{sample}_{read}_fastqc.zip",method="{method}",sample=SAMPLE,read=READ)
+  output:
+    expand("info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/multiqc_report.html",method="{method}")
+  log:
+    "logs/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc/multiqc3.log"
+  threads: 1
+  params:
+    out_dir="info/02_fastq_derRNA/{method}_vs/00_derRNA_fastq/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
+
+rule bowtie2_mapping_raw:
+  input:
+    "01_fastp/04_trim_umi_dup/{sample}_1.fq.gz",
+    "01_fastp/04_trim_umi_dup/{sample}_2.fq.gz"
+  output:
+    R1="02_fastq_derRNA/raw_vs/00_derRNA_fastq/{sample}_1.fq.gz",
+    R2="02_fastq_derRNA/raw_vs/00_derRNA_fastq/{sample}_2.fq.gz",
+    bam="02_fastq_derRNA/raw_vs/01_bam_raw/{sample}.bam",
+    summary="info/02_fastq_derRNA/raw_vs/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX_rRNA,
+    outname="02_fastq_derRNA/raw_vs/00_derRNA_fastq/{sample}_%.fq.gz"    
+  log:
+    "logs/02_fastq_derRNA/raw_vs/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --very-sensitive \
+    --un-conc-gz {params.outname} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {output.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """

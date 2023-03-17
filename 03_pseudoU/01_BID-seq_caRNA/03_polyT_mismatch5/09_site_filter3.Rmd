@@ -1,0 +1,509 @@
+---
+title: "09_site_filter3"
+author: "Tang Li"
+date: '2022-11-24'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggcor)
+library(ggprism)
+library(ggrepel)
+library(GenomicFeatures)
+library(Guitar)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(tidyverse)
+library(venn)
+library(Vennerable)
+library(VennDiagram)
+library(ggbeeswarm)
+library(reshape2)
+library(ttFunctions)
+
+#obj: ~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/")
+```
+
+## site filter
+
+```{r site filter for all sample}
+
+#site_info_anno <- read.delim("site_info_anno_merge.txt",header = T)
+
+rownames(site_info_anno) <- paste0(site_info_anno$chr,"_",site_info_anno$pos)
+
+site_info_filter <- site_info_anno
+
+#input_count_filter 5 or 10
+input_count_filter <- rowSums(site_info_filter[,seq(from=4,to=44,by=8)])>=5
+table(input_count_filter)
+table(is.na(input_count_filter))
+site_info_filter <- site_info_filter[input_count_filter,]
+
+t_count_ratio <- (rowSums(site_info_filter[,seq(from=5,to=49,by=4)])+ rowSums(site_info_filter[,seq(from=6,to=50,by=4)]))/(rowSums(site_info_filter[,seq(from=4,to=48,by=4)])+rowSums(site_info_filter[,seq(from=6,to=50,by=4)]))
+table(is.na(t_count_ratio))
+hist(t_count_ratio)
+t_count_filter <- t_count_ratio>=0.8
+table(t_count_filter)
+site_info_filter <- site_info_filter[t_count_filter,]
+
+input_del_filter <- rowSums(site_info_filter[,seq(from=6,to=46,by=8)])/rowSums(site_info_filter[,seq(from=5,to=45,by=8)])<0.01
+table(is.na(input_del_filter))
+table(input_del_filter)
+length(input_del_filter)
+site_info_filter <- site_info_filter[input_del_filter,]
+```
+
+```{r site filter for every sample}
+dir.create("07_site_filter_group")
+dir.create("07_site_filter_group/01_sen")
+dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5")
+#dir.create("07_site_filter_group/01_sen/input5_count3_ratio5_fraction10")
+#  function "site_filter_group"
+site_filter_sample <- function(site_info_filter,sample,del_count=5,del_ratio=0.03,del_fraction=0.05){
+  filter_del_ratio <- site_info_filter[,paste0(sample,"_del_ratio")]>=del_ratio
+  
+  filter_del_count <- site_info_filter[,paste0(sample,"_del_count")] >=del_count
+
+  filter_fraction <- site_info_filter[,paste0(sample,"_del_fraction")]>=del_fraction
+  
+  site_conf <- site_info_filter[filter_del_ratio & filter_del_count & filter_fraction,]
+  return(site_conf)
+}
+P12_1_conf <- site_filter_sample(site_info_filter,"P12_BS_1")
+P12_2_conf <- site_filter_sample(site_info_filter,"P12_BS_2")
+P12_3_conf <- site_filter_sample(site_info_filter,"P12_BS_3")
+
+P16_1_conf <- site_filter_sample(site_info_filter,"P16_BS_1")
+P16_2_conf <- site_filter_sample(site_info_filter,"P16_BS_2")
+P16_3_conf <- site_filter_sample(site_info_filter,"P16_BS_3")
+
+venn_P12 <- Venn(Sets=list(P12_1=rownames(P12_1_conf),P12_2=rownames(P12_2_conf),P12_3=rownames(P12_3_conf)),numberOfSets = 3)
+venn_P16 <- Venn(Sets=list(P16_1=rownames(P16_1_conf),P16_2=rownames(P16_2_conf),P16_3=rownames(P16_3_conf)),numberOfSets = 3)
+
+P12_conf_name <- c(venn_P12@IntersectionSets$`110`,venn_P12@IntersectionSets$`101`,
+                   venn_P12@IntersectionSets$`011`,venn_P12@IntersectionSets$`111`)
+P16_conf_name <- c(venn_P16@IntersectionSets$`110`,venn_P16@IntersectionSets$`101`,
+                   venn_P16@IntersectionSets$`011`,venn_P16@IntersectionSets$`111`)
+venn_sen <- Venn(list(P12=P12_conf_name,P16=P16_conf_name))
+
+P12_site <- site_info_filter[P12_conf_name,]
+P16_site <- site_info_filter[P16_conf_name,]
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_venn.pdf")
+plot(venn_P12) 
+plot(venn_P16) 
+plot(venn_sen)
+dev.off()
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/03_col_heatmap.pdf")
+quickcor(site_info_anno[P12_conf_name,
+                   c("P12_BS_1_del_fraction","P12_BS_2_del_fraction","P12_BS_3_del_fraction")],
+         circular=F,cor.test = TRUE,mapping=aes(fill=r))+
+  geom_square(data=get_data(type = "upper",show.diag = F))+
+  scale_fill_gradientn(colors=cm.colors(2))+
+  geom_mark(data = get_data(type = "lower",show.diag = F),size=2.5)
+quickcor(site_info_anno[P16_conf_name,
+                   c("P16_BS_1_del_fraction","P16_BS_2_del_fraction","P16_BS_3_del_fraction")],
+         circular=F,cor.test = TRUE,mapping=aes(fill=r))+
+  geom_square(data=get_data(type = "upper",show.diag = F))+
+  scale_fill_gradientn(colors=cm.colors(2))+
+  geom_mark(data = get_data(type = "lower",show.diag = F),size=2.5)
+dev.off()
+
+theme_bar <- theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family  = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+    theme(plot.title = element_text(size=16,hjust = 0.5),plot.margin = unit(c(2,0.5,4.5,0.5),"cm"))
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/04_point_line_rep3.pdf",width = 5)
+  p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_1_del_fraction,y=P12_BS_3_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~1),y=expression(P12~BS~3))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info_anno[venn_P12@IntersectionSets$`111`,],aes(x=P12_BS_2_del_fraction,y=P12_BS_3_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~BS~2),y=expression(P12~BS~3))+#标题
+    theme_bar+
+    ggtitle(expression(P12~genome))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info_anno[venn_P16@IntersectionSets$`111`,],aes(x=P16_BS_1_del_fraction,y=P16_BS_2_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P16~BS~1),y=expression(P16~BS~2))+#标题
+    theme_bar+
+    ggtitle(expression(P16~genome))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info_anno[venn_P16@IntersectionSets$`111`,],aes(x=P16_BS_1_del_fraction,y=P16_BS_3_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P16~BS~1),y=expression(P16~BS~3))+#标题
+    theme_bar+
+    ggtitle(expression(P16~genome))+
+    coord_fixed()
+  print(p)
+  
+  p <- ggplot(site_info_anno[venn_P16@IntersectionSets$`111`,],aes(x=P16_BS_2_del_fraction,y=P16_BS_3_del_fraction))+
+    geom_point(col="#ff624b")+
+    geom_abline(slope=1,intercept = 0)+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P16~BS~2),y=expression(P16~BS~3))+#标题
+    theme_bar+
+    ggtitle(expression(P16~genome))+
+    coord_fixed()
+  print(p)
+dev.off()
+
+```
+
+```{r sen_conf}
+
+sen_conf_name <- c(venn_sen@IntersectionSets$`10`,venn_sen@IntersectionSets$`01`,venn_sen@IntersectionSets$`11`)
+
+sen_site <- site_info_filter[sen_conf_name,]
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/05_pU_level_region.pdf",width = 6)
+temp <- as.data.frame(table(sen_site$diff_frac_group))
+temp$Var1 <- factor(temp$Var1,levels = c("P12_high","P16_high","NC"))
+ggplot(temp,aes(x = '',y = Freq,fill = Var1)) +
+  geom_col(position = position_fill()) +
+  geom_text(aes(y=Freq,label=Freq),position = position_fill(vjust=0.5,reverse = F),size=8)+
+  theme_void() +
+  theme(legend.position = c(0.15,0.9),legend.text = element_text(size=14),legend.title = element_text(size=14),
+        strip.text.x = element_text(size= 30)) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = paste0('Total=',dim(sen_site)[1]))
+
+temp <- as.data.frame(table(sen_site$region))
+temp$label1 <- ifelse(temp$Var1 %in% c("intron","Intergenic"),temp$Freq,"")
+temp$label2 <- ifelse(temp$Var1 %in% c("exon","promoter-TSS","TTS","3' UTR"),temp$Freq,"")
+ggplot(temp,aes(x = '',y = Freq,fill = Var1)) +
+  geom_col(position = position_fill()) +
+  geom_text(aes(y=Freq,label=label1),position = position_fill(vjust=0.5,reverse = F),size=8)+
+  geom_text(aes(y=Freq,label=label2),position = position_fill(vjust=0.5,reverse = F),size=4)+
+  theme_void() +
+  theme(legend.position = c(0.15,0.85),legend.text = element_text(size=14),legend.title = element_text(size=14),
+        strip.text.x = element_text(size= 30)) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+p <- ggplot(sen_site,aes(x=P12_mean_frac,y=P16_mean_frac))+
+    geom_point(aes(col=diff_frac_group))+
+    xlim(0,1)+
+    ylim(0,1)+
+    labs(x=expression(P12~fraction),y=expression(P16~fraction))+#标题
+    theme_bar+
+    coord_fixed()+
+  scale_color_manual(values = c("#BBBBBB","#2f5688","#CC0000"))
+  print(p)
+dev.off()
+
+write.table(sen_site,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/sen_site.txt",quote = F,row.names = T,col.names = T,sep = '\t')
+
+```
+
+```{r fraction boxplot}
+
+sen_site_melt <- data.frame(group=c(rep("P12",dim(P12_site)[1]),
+                                    rep("P16",dim(P16_site)[1])),
+                            mean_fraction = c(P12_site$P12_mean_frac,P16_site$P16_mean_frac))
+
+sen_site_melt$frac_group <- factor(ifelse(sen_site_melt$mean_fraction<0.1,"fraction <10%",
+                                   ifelse(sen_site_melt$mean_fraction<0.2,"fraction 10%-20%",
+                                          ifelse(sen_site_melt$mean_fraction<0.5,"fraction 20%-50%","fraction >50%"))),
+                                   levels=c("fraction >50%","fraction 20%-50%","fraction 10%-20%","fraction <10%"))
+
+P12_frac_mean <- mean(sen_site_melt[sen_site_melt$group=="P12","mean_fraction"])
+P16_frac_mean <- mean(sen_site_melt[sen_site_melt$group=="P16","mean_fraction"])
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/06_mean_fraction_beeswarm.pdf")
+ggplot(sen_site_melt, aes(x = mean_fraction, y = group,col=group,fill=group,shape=group)) +
+  geom_quasirandom(alpha=0.7,size=2,groupOnX=FALSE,varwidth=T,show.legend = F) +
+  scale_color_manual(values=c("P12"="#060503","P16"="#060503"))+
+  scale_fill_manual(values=c("P12"="#fbcc76","P16"="#fbcc76"))+
+  scale_shape_manual(values=c("P12"=21,"P16"=21))+
+  annotate("segment", x = 0.1, xend = 0.1, y = 0.5, yend = 2.5,size = 2,)+
+  annotate("segment", x = 0.5, xend = 0.5, y = 0.5, yend = 2.5,size = 2,)+
+  annotate("text", x = 0.2, y = 2.5, label=sprintf("%0.1f%%",10),size = 6)+
+  annotate("text", x = 0.6, y = 2.5, label=sprintf("%0.1f%%",50),size = 6)+
+  annotate("segment", x = P12_frac_mean, xend = P12_frac_mean, y = 0.7, yend = 1.3,size = 2,col="#ff624b")+
+  annotate("segment", x = P16_frac_mean, xend = P16_frac_mean, y = 1.7, yend = 2.3,size = 2,col="#ff624b")+
+  annotate("text", x = P12_frac_mean, y = 0.6, label=sprintf("%0.1f%%",P12_frac_mean*100),size = 6,col="#ff624b")+
+  annotate("text", x = P16_frac_mean, y = 2.4, label=sprintf("%0.1f%%",P16_frac_mean*100),size = 6,col="#ff624b")+
+  theme_bar+
+  theme(plot.margin = margin(t=2,r=0.5,b=2,l=0.5,unit = "cm"))+
+  labs(x=expression(pU~fraction),y=NULL)
+dev.off()
+
+sen_site_num <- rbind(P12=table(sen_site_melt[sen_site_melt$group=="P12",3]),
+                      P16=table(sen_site_melt[sen_site_melt$group=="P16",3]))
+sen_site_num_melt <- melt(sen_site_num)
+colnames(sen_site_num_melt) <- c("group","frac_group","num")
+sen_site_num_melt$frac_group <- factor(sen_site_num_melt$frac_group,levels=c("fraction >50%","fraction 20%-50%","fraction 10%-20%","fraction <10%"))
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/07_mean_fraction_barplot.pdf")
+ggplot(sen_site_num_melt, aes(x = group,y=num)) +
+  geom_col(aes(fill=frac_group)) +
+  scale_fill_manual(values=c("#ee5146","#fbcc76","#049e8a","#494949"))+
+  geom_text(aes(fill=frac_group,label=num),size=6,position=position_stack(vjust=0.5,reverse = F))+
+  theme_bar+
+  labs(x=NULL,y=expression(pU~site~number))
+
+ggplot(sen_site_num_melt, aes(x = group,y=num)) +
+  geom_col(aes(fill=frac_group),position = "fill") +
+  scale_fill_manual(values=c("#ee5146","#fbcc76","#049e8a","#494949"))+
+  geom_text(aes(fill=frac_group,label=num),size=6,position=position_fill(vjust=0.5,reverse = F))+
+  theme_bar+
+  labs(x=NULL,y=expression(pU~site~fraction))
+dev.off()
+```
+
+```{r motif frequent}
+###frequent_motif_all
+frequent_motif <- aggregate(sen_site[,c(72,73)],by=list(c(sen_site$motif)),FUN="mean")
+colnames(frequent_motif) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(sen_site$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif <- merge(motif_count,frequent_motif)
+frequent_motif$freq_percent <- frequent_motif$freq/(dim(sen_site)[1])
+
+p1 <- ggplot(frequent_motif)+
+  geom_point(aes(x=freq,y=fraction_P16))+
+  geom_text_repel(data=frequent_motif[(frequent_motif$freq>15 | frequent_motif$fraction_P16>0.7),],aes(x=freq,y=fraction_P16,label=motif),show.legend = F,position = position_nudge())+
+  theme_bar
+
+## frequent_motif P16_high
+P16_high_site <- sen_site[sen_site$diff_frac_group=="P16_high",]
+frequent_motif_P16_high <- aggregate(P16_high_site[,c(72,73)],by=list(c(P16_high_site$motif)),FUN="mean")
+colnames(frequent_motif_P16_high) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(P16_high_site$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif_P16_high <- merge(motif_count,frequent_motif_P16_high)
+frequent_motif_P16_high$freq_percent <- frequent_motif_P16_high$freq/(dim(P16_high_site)[1])
+
+### frequent_motif P16_other
+P16_other_site <- sen_site[!sen_site$diff_frac_group=="P16_high",]
+frequent_motif_P16_other <- aggregate(P16_other_site[,c(72,73)],by=list(c(P16_other_site$motif)),FUN="mean")
+colnames(frequent_motif_P16_other) <- c("motif","fraction_P12","fraction_P16")
+
+motif_count <- as.data.frame(table(c(P16_other_site$motif)))
+colnames(motif_count) <- c("motif","freq")
+
+frequent_motif_P16_other <- merge(motif_count,frequent_motif_P16_other)
+frequent_motif_P16_other$freq_percent <- frequent_motif_P16_other$freq/(dim(P16_other_site)[1])
+
+frequent_motif_compare <- merge(frequent_motif_P16_other,frequent_motif_P16_high,by="motif")
+
+
+freq_percent_motif <- frequent_motif_compare[frequent_motif_compare$freq_percent.x>0.01 | frequent_motif_compare$freq_percent.y>0.01, ]
+freq_percent_motif_melt <-   melt(freq_percent_motif,id.vars = c("motif"),measure.vars = c("freq_percent.x","freq_percent.y"))
+
+freq_percent_motif_melt$variable <- ifelse(freq_percent_motif_melt$variable=="freq_percent.x","other","P16_high")
+
+p2 <- ggplot(freq_percent_motif_melt)+
+  geom_col(aes(x=reorder(motif,value),y=value,fill=variable),position ="dodge")+
+  theme_bar+
+  labs(x=NULL)
+  
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/08_motif_fraction.pdf")
+print(p1)
+dev.off()
+
+pdf("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/08_motif_fraction_bar.pdf",width = 12,height = 9)
+print(p2)
+dev.off()
+
+```
+
+```{r Guitar}
+dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed")
+sen_site$pos <- as.numeric(sen_site$pos)
+
+sen_site_bed <- data.frame(chr=sen_site$chr,
+                              start=sen_site$pos,
+                              end=sen_site$pos+1,
+                              name=paste0(sen_site$chr,"_",sen_site$pos),
+                              score=".",
+                              strand=sen_site$strand)
+is.na(sen_site_bed)
+write.table(sen_site_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_site.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16h <- sen_site[sen_site$diff_frac_group=="P16_high",]
+sen_P16h_bed <- data.frame(chr=sen_P16h$chr,
+                              start=sen_P16h$pos,
+                              end=sen_P16h$pos+1,
+                              name=paste0(sen_P16h$chr,"_",sen_P16h$pos),
+                              score=".",
+                              strand=sen_P16h$strand)
+write.table(sen_P16h_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_P16h.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16other <- sen_site[!sen_site$diff_frac_group=="P16_high",]
+sen_P16other_bed <- data.frame(chr=sen_P16other$chr,
+                              start=sen_P16other$pos,
+                              end=sen_P16other$pos+1,
+                              name=paste0(sen_P16other$chr,"_",sen_P16other$pos),
+                              score=".",
+                              strand=sen_P16other$strand)
+write.table(sen_P16other_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_bed/sen_P16other.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+
+
+# read bed file
+stBedFiles <- list("sen_site.bed","sen_P16h.bed","sen_P16other.bed")
+
+# prepare annotation file
+# txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+gtffile <- file.path("/disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+dir <- "07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/"
+
+guitar_plot <- GuitarPlot(txTxdb = txdb,
+           stBedFiles = file.path(dir,"02_site_bed",stBedFiles),
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P16_other"),
+           txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+# draw
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/09_metagene_profiles_of_pU_site.pdf")
+print(guitar_plot+theme_bar)
+dev.off()
+
+gtffile <- file.path("/disk/user_09/reference/annotation/hg38/gencode.v40.annotation.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+guitar_plot <- GuitarPlot(txTxdb = txdb,
+           stBedFiles = file.path(dir,"02_site_bed",stBedFiles),
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P12_other"))
+           #txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+# draw
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/07_site_filter_group/01_sen/input5_count3_ratio5_fraction10/09_metagene_profiles_of_pU_site_gencode.pdf")
+print(guitar_plot+theme_bar)
+dev.off()
+
+```
+
+```{r}
+sen_site_pc <- sen_site[sen_site$region!="Intergenic",]
+
+dir.create("07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_pc_bed")
+sen_site_pc$pos <- as.numeric(sen_site_pc$pos)
+
+sen_site_pc_bed <- data.frame(chr=sen_site_pc$chr,
+                              start=sen_site_pc$pos,
+                              end=sen_site_pc$pos+1,
+                              name=paste0(sen_site_pc$chr,"_",sen_site_pc$pos),
+                              score=".",
+                              strand=sen_site_pc$strand)
+is.na(sen_site_pc_bed)
+write.table(sen_site_pc_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_pc_bed/sen_site_pc.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16h <- sen_site_pc[sen_site_pc$diff_frac_group=="P16_high",]
+sen_P16h_bed <- data.frame(chr=sen_P16h$chr,
+                              start=sen_P16h$pos,
+                              end=sen_P16h$pos+1,
+                              name=paste0(sen_P16h$chr,"_",sen_P16h$pos),
+                              score=".",
+                              strand=sen_P16h$strand)
+write.table(sen_P16h_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_pc_bed/sen_P16h.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+sen_P16other <- sen_site_pc[!sen_site_pc$diff_frac_group=="P16_high",]
+sen_P16other_bed <- data.frame(chr=sen_P16other$chr,
+                              start=sen_P16other$pos,
+                              end=sen_P16other$pos+1,
+                              name=paste0(sen_P16other$chr,"_",sen_P16other$pos),
+                              score=".",
+                              strand=sen_P16other$strand)
+write.table(sen_P16other_bed,"07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/02_site_pc_bed/sen_P16other.bed",quote = F,row.names = F,col.names = F,sep = '\t')
+
+
+
+# read bed file
+stBedFiles <- list("sen_site_pc.bed","sen_P16h.bed","sen_P16other.bed")
+
+# prepare annotation file
+# txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+gtffile <- file.path("/disk/user_09/reference/annotation/hg38/Homo_sapiens.GRCh38.108.basic.pc.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+dir <- "07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/"
+
+guitar_plot <- GuitarPlot(txTxdb = txdb,
+           stBedFiles = file.path(dir,"02_site_pc_bed",stBedFiles),
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P16_other"),
+           txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+# draw
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/09_metagene_profiles_of_pU_site_pc.pdf")
+print(guitar_plot+theme_bar)
+dev.off()
+
+gtffile <- file.path("/disk/user_09/reference/annotation/hg38/gencode.v40.annotation.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+guitar_plot <- GuitarPlot(txTxdb = txdb,
+           stBedFiles = file.path(dir,"02_site_pc_bed",stBedFiles),
+           headOrtail = FALSE,
+           enableCI = FALSE,
+           mapFilterTranscript = TRUE,
+           pltTxType = c("mrna"),
+           stGroupName = c("sen","P16_high","P12_other"))
+           #txMrnaComponentProp = c(0,1/3,1/3,1/3,0))
+# draw
+pdf("~/Data/09_PseudoU/06_aging_pU_SE/04_hisat2_mapping/08_site_filter3/07_site_filter_group/01_sen/input5_count5_ratio3_fraction5/09_metagene_profiles_of_pU_site_pc_gencode.pdf")
+print(guitar_plot+theme_bar)
+dev.off()
+```

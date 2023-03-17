@@ -1,0 +1,59 @@
+---
+title: "01_MeRIP_tools"
+author: "Tang Li"
+date: '2023-03-09'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(MeRIPtools)
+
+# ~/Data/01_TC1/25_siVirma_m6A/
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/25_siVirma_m6A/"))
+
+```
+
+```{r}
+samplenames <- c("P14_siNC_caRNA_rep1","P14_siNC_caRNA_rep2",
+                 "P14_siM3_caRNA_rep1","P14_siM3_caRNA_rep2",
+                 "P14_siNudt21_caRNA_rep1","P14_siNudt21_caRNA_rep2",
+                 "P21_siNC_caRNA_rep1","P21_siNC_caRNA_rep2",
+                 "P21_siVirma_caRNA_rep1","P21_siVirma_caRNA_rep2")
+
+bam_dir <- "~/Data/01_TC1/25_siVirma_m6A/01_bam_merge/"
+
+list.files(bam_dir)
+
+dir.create("02_MeRIP_output")
+
+MeRIP <- countReads(samplenames = samplenames,
+                    gtf = "/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf",
+                    bamFolder = bam_dir,
+                    outputDir = "02_MeRIP_output",
+                    modification = "m6A",
+                    strandToKeep = "opposite",
+                    fragmentLength = 150,
+                    binSize = 50,
+                    threads = 50,
+                    saveOutput = TRUE
+                    )
+
+MeRIP_Bn <- callPeakBinomial(MeRIP = MeRIP, min_counts = 15, peak_cutoff_fdr = 0.05, peak_cutoff_oddRatio = 1, threads = 50)
+
+MeRIP_Bn2 <- reportJointPeak(MeRIPdata = MeRIP_Bn, joint_threshold = 2, threads = 50)
+
+MeRIP_result <- jointPeakCount(MeRIP_Bn2)
+
+Input_count <- extractInput(MeRIP_result)
+IP_count <- extractIP(MeRIP_result)
+
+variable(MeRIP_result) <- data.frame( genotype = rep(c("P14_siNC","P14_siM3","P14_siNudt21","P21_siNC","P21_siVirma"),each=2 ))
+
+MeRIP_result <- QNBtest(MeRIP_result)
+
+
+```

@@ -1,0 +1,40 @@
+
+#SAMPLE=["P8_Ctrl_Ctrl","P8_M3IN_Ctrl","P8_M3IN_At-c1","P8_M3IN_At-c2","P8_M3IN_CCCP-c1","P8_M3IN_CCCP-c2","P8_M3IN_CX-c1","P8_M3IN_CX-c2","P8_M3IN_Rbin-c1","P8_M3IN_Rbin-c2","P14_siNC-c1","P14_siNC-c2","P14_siNudt21-c1","P14_siNudt21-c2","P14_siM3-c1","P0_siNudt21_Ctrl","P0_siNudt21_dox","P2_siNudt21_Ctrl","P2_siNudt21_dox","P4_siNudt21_Ctrl","P4_siNudt21_dox","P5_siNudt21_Ctrl","P5_siNudt21_dox"]
+
+SAMPLE=["P0_siNudt21_Ctrl","P0_siNudt21_dox","P2_siNudt21_Ctrl"]
+
+READ=["1","2"]
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/rRNA_mm39/rRNA"
+
+MAPPING_THREADS = 20
+
+rule all:
+  input:
+    expand("02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",sample=SAMPLE)
+    
+rule bowtie2_mapping:
+  input:
+    "01_trim_galore/{sample}_1_val_1.fq.gz",
+    "01_trim_galore/{sample}_2_val_2.fq.gz"
+  output:
+    R1="02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    R2="02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz",
+    bam="02_fastq_derRNA/01_bam_raw/{sample}.bam",
+    summary="info/02_fastq_derRNA/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX_rRNA,
+    outname="02_fastq_derRNA/00_derRNA_fastq/{sample}_%.derRNA.fq.gz"    
+  log:
+    "logs/02_fastq_derRNA/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --un-conc-gz {params.outname} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {output.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """

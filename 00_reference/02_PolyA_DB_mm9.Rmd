@@ -1,0 +1,127 @@
+---
+title: "Untitled"
+author: "Tang Li"
+date: '2023-02-16'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ttFunctions)
+
+# ~/reference/annotation/mm9/PolyA_DB3
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/reference/annotation/mm9/PolyA_DB3"))
+
+```
+
+## R Markdown
+```{r PolyA_DB_mm9}
+PolyA_DB_mm9 <- read.delim("~/reference/annotation/mm9/PolyA_DB3/mouse.PAS.txt")
+
+table(PolyA_DB_mm9$Ensemble.ID=="na")
+
+PolyA_DB_mm9_filter <- PolyA_DB_mm9[!PolyA_DB_mm9$Ensemble.ID %in% c("na","NO") & !PolyA_DB_mm9$PAS.type %in% c("ncRNA","Pseudogene"),]
+
+PolyA_DB_mm9_filter$PSE <- as.numeric(sub("%","",PolyA_DB_mm9_filter$PSE))
+hist(as.numeric(PolyA_DB_mm9_filter$PSE),breaks = 100)
+table(PolyA_DB_mm9_filter$PSE>=5)
+table(PolyA_DB_mm9_filter$PSE>=10)
+table(PolyA_DB_mm9_filter$PSE>=15)
+table(PolyA_DB_mm9_filter$PSE>=20)
+
+table(table(Gene_polyA=PolyA_DB_mm9_filter[PolyA_DB_mm9_filter$PSE>=20,"Gene.Symbol"]))
+barplot(table(table(Gene_polyA=PolyA_DB_mm9_filter[PolyA_DB_mm9_filter$PSE>=20,"Gene.Symbol"])))
+
+PolyA_DB_mm9_filter2 <- PolyA_DB_mm9_filter[PolyA_DB_mm9_filter$PSE>=20,]
+table(PolyA_DB_mm9_filter2$PAS.type)
+table(PolyA_DB_mm9_filter2$Intron.exon.location)
+
+table(table(Gene_polyA=PolyA_DB_mm9_filter2[PolyA_DB_mm9_filter2$PAS.type!="Intron","Gene.Symbol"]))
+
+table(table(Gene_polyA=PolyA_DB_mm9_filter2[PolyA_DB_mm9_filter2$PAS.type=="Intron","Gene.Symbol"]))
+
+PolyA_DB_mm9_filter2$Ensemble_name[1] <- paste0(PolyA_DB_mm9_filter2$Ensemble.ID[1],"_",1)
+k=1
+for (j in 2:dim(PolyA_DB_mm9_filter2)[1]){
+  k <- k+1
+  if (PolyA_DB_mm9_filter2$Ensemble.ID[j]==PolyA_DB_mm9_filter2$Ensemble.ID[j-1]){
+  PolyA_DB_mm9_filter2$Ensemble_name[j] <- paste0(PolyA_DB_mm9_filter2$Ensemble.ID[j],"_",k)
+  } else {
+    PolyA_DB_mm9_filter2$Ensemble_name[j] <- paste0(PolyA_DB_mm9_filter2$Ensemble.ID[j],"_",1)
+    k <- 1
+  }
+}
+
+PolyA_DB_mm9_filter2_bedplus <- data.frame(chr=PolyA_DB_mm9_filter2$Chromosome,
+                                       start=PolyA_DB_mm9_filter2$Position,
+                                       end=PolyA_DB_mm9_filter2$Position+1,
+                                       name=PolyA_DB_mm9_filter2$Ensemble_name,
+                                       strand=PolyA_DB_mm9_filter2$Strand,
+                                       score=PolyA_DB_mm9_filter2$PSE,
+                                       PAS_type=PolyA_DB_mm9_filter2$PAS.type,
+                                       gene_symbol=PolyA_DB_mm9_filter2$Gene.Symbol,
+                                       PAS_signal=PolyA_DB_mm9_filter2$PAS.Signal)
+
+tt_wt(PolyA_DB_mm9_filter2_bedplus,"PolyA_DB_mm9_filter2.bedplus")
+
+PolyA_DB_mm9_filter2_bed <- PolyA_DB_mm9_filter2_bedplus[,1:6]
+tt_wt(PolyA_DB_mm9_filter2_bed,"PolyA_DB_mm9_filter2.bed")
+
+```
+
+```{r PolyAsite_mm10}
+PolyAsite_mm10 <- read.delim("~/reference/annotation/mm10/PolyAsite/atlas.clusters.2.0.GRCm38.96.bed",header = F)
+
+table(PolyAsite_mm10$Ensemble.ID=="na")
+
+PolyAsite_mm10_filter <- PolyAsite_mm10[!PolyAsite_mm10$Ensemble.ID %in% c("na","NO") & !PolyAsite_mm10$PAS.type %in% c("ncRNA","Pseudogene"),]
+
+PolyAsite_mm10_filter$PSE <- as.numeric(sub("%","",PolyAsite_mm10_filter$PSE))
+hist(as.numeric(PolyAsite_mm10_filter$PSE),breaks = 100)
+table(PolyAsite_mm10_filter$PSE>=5)
+table(PolyAsite_mm10_filter$PSE>=10)
+table(PolyAsite_mm10_filter$PSE>=15)
+table(PolyAsite_mm10_filter$PSE>=20)
+
+table(table(Gene_polyA=PolyAsite_mm10_filter[PolyAsite_mm10_filter$PSE>=20,"Gene.Symbol"]))
+barplot(table(table(Gene_polyA=PolyAsite_mm10_filter[PolyAsite_mm10_filter$PSE>=20,"Gene.Symbol"])))
+
+PolyAsite_mm10_filter2 <- PolyAsite_mm10_filter[PolyAsite_mm10_filter$PSE>=20,]
+table(PolyAsite_mm10_filter2$PAS.type)
+table(PolyAsite_mm10_filter2$Intron.exon.location)
+
+table(table(Gene_polyA=PolyAsite_mm10_filter2[PolyAsite_mm10_filter2$PAS.type!="Intron","Gene.Symbol"]))
+
+table(table(Gene_polyA=PolyAsite_mm10_filter2[PolyAsite_mm10_filter2$PAS.type=="Intron","Gene.Symbol"]))
+
+PolyAsite_mm10_filter2$Ensemble_name[1] <- paste0(PolyAsite_mm10_filter2$Ensemble.ID[1],"_",1)
+k=1
+for (j in 2:dim(PolyAsite_mm10_filter2)[1]){
+  k <- k+1
+  if (PolyAsite_mm10_filter2$Ensemble.ID[j]==PolyAsite_mm10_filter2$Ensemble.ID[j-1]){
+  PolyAsite_mm10_filter2$Ensemble_name[j] <- paste0(PolyAsite_mm10_filter2$Ensemble.ID[j],"_",k)
+  } else {
+    PolyAsite_mm10_filter2$Ensemble_name[j] <- paste0(PolyAsite_mm10_filter2$Ensemble.ID[j],"_",1)
+    k <- 1
+  }
+}
+
+PolyAsite_mm10_filter2_bedplus <- data.frame(chr=PolyAsite_mm10_filter2$Chromosome,
+                                       start=PolyAsite_mm10_filter2$Position,
+                                       end=PolyAsite_mm10_filter2$Position+1,
+                                       name=PolyAsite_mm10_filter2$Ensemble_name,
+                                       strand=PolyAsite_mm10_filter2$Strand,
+                                       score=PolyAsite_mm10_filter2$PSE,
+                                       PAS_type=PolyAsite_mm10_filter2$PAS.type,
+                                       gene_symbol=PolyAsite_mm10_filter2$Gene.Symbol,
+                                       PAS_signal=PolyAsite_mm10_filter2$PAS.Signal)
+
+tt_wt(PolyAsite_mm10_filter2_bedplus,"PolyAsite_mm10_filter2.bedplus")
+
+PolyAsite_mm10_filter2_bed <- PolyAsite_mm10_filter2_bedplus[,1:6]
+tt_wt(PolyAsite_mm10_filter2_bed,"PolyAsite_mm10_filter2.bed")
+
+```

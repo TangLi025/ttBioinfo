@@ -1,0 +1,273 @@
+---
+title: "01_mRNA_expression_embryo_xiewei"
+author: "Tang Li"
+date: '2023-02-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DESeq2)
+library(GEOquery)
+library(GenomicFeatures)
+library(BiocParallel)
+library(GenomicAlignments)
+library(rtracklayer)
+library(NMF)
+library(parallel)
+library(Rsubread)
+library(RUVSeq)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggprism)
+library(RColorBrewer)
+library(ttFunctions)
+library(ggthemes)
+library(ggsci)
+library(ggpubr)
+library(ComplexHeatmap)
+library(sva)
+library(venn)
+options(stringsAsFactors = FALSE)
+library(ggrepel)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(biomaRt)
+library(enrichplot)
+library(patchwork)
+
+# ~/Data/01_TC1/01_mRNA_expression/10_embryo_xiewei
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/01_mRNA_expression/10_embryo_xiewei/"))
+```
+
+```{r generate bam list}
+
+dir1='/disk/user_09/Data/02_embryo/06_embryo_xiewei/03_hisat2_mapping/03_bam_merge/'
+sample_name1 <- c("Growing_oocyte_10days",
+                  "Growing_oocyte_14days",
+                  "GV_8weeks",
+                  paste(rep(c("MII_oocyte","zygote_PN5","early_2cell","late_2cell","cell4","cell8","ICM"),each=2),
+                      c("rep1","rep2"),
+                      sep = "_"))
+fls <- file.path(dir1,paste0(sample_name1,'.bam'))
+file.exists(fls)
+```
+
+```{r featureCounts}
+fc_result <- featureCounts(fls,annot.ext = "/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf",
+              isGTFAnnotationFile = T,
+              GTF.attrType.extra = c("gene_name","gene_type"),
+              minOverlap = 30,
+              strandSpecific = 0,
+              isPairedEnd = T,
+              nthreads = 50)
+
+fc_result_count <- as.data.frame(fc_result$counts)
+fc_result_annotation <- fc_result$annotation
+fc_result_annotation$GeneID <- str_sub(fc_result_annotation$GeneID,1,18)
+rownames(fc_result_count) <- fc_result_annotation$GeneID
+rownames(fc_result_annotation) <- fc_result_annotation$GeneID
+
+colnames(fc_result_count) <- sample_name1
+
+dir.create("01_featureCounts")
+tt_wt(fc_result_count,file.path("01_featureCounts/express_matrix_count.txt"),col.names = T,row.names = T) 
+tt_wt(fc_result_annotation,file.path("01_featureCounts/express_matrix_annotation.txt"),col.names = T,row.names = T) 
+
+table(duplicated(fc_result_annotation$gene_name))
+
+fc_result_count <- fc_result_count[!duplicated(fc_result_annotation$gene_name),]
+fc_result_annotation <- fc_result_annotation[rownames(fc_result_count),]
+
+rownames(fc_result_count) <- fc_result_annotation$gene_name
+rownames(fc_result_annotation) <- fc_result_annotation$gene_name
+
+tt_wt(fc_result_count,file.path("01_featureCounts/express_matrix_count_rowname_modified.txt"),col.names = T,row.names = T) 
+tt_wt(fc_result_annotation,file.path("01_featureCounts/express_matrix_annotation_rowname_modified.txt"),col.names = T,row.names = T) 
+
+```
+
+
+```{R marker gene table}
+marker_all <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//all")$V1
+marker_toti <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//toti")$V1
+marker_pluri <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//pluri")$V1
+marker_TE_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//TE_TSC")$V1
+marker_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//TE")$V1
+marker_PrE_XEN <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//PrE_XEN")$V1
+marker_APA <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//APA")$V1
+marker_APAperturb <- read.table("~/Data/01_TC1/00_gene_set/all/APA_perturb")$V1
+
+table(marker_all %in% rownames(fc_result_count))
+marker_all[!marker_all %in% rownames(fc_result_count)]
+marker_all <- marker_all[marker_all %in% rownames(fc_result_count)]
+```
+
+```{R betweenLaneNormalization & expression filter10}
+sample_name <- sample_name1
+express_matrix <- fc_result_count
+colnames(express_matrix) <- sample_name
+meta_data <- data.frame(rep = c(rep("rep1",3),
+                                rep(c("rep1","rep2"),times=7)),
+                        stage = c("Growing_oocyte_10days",
+                  "Growing_oocyte_14days",
+                  "GV_8weeks",
+                  rep(c("MII_oocyte","zygote_PN5",
+                        "early_2cell","late_2cell",
+                        "cell4","cell8","ICM"),each=2)),
+                        row.names = sample_name,
+                        sample_name = sample_name,
+                        stringsAsFactors = TRUE)
+meta_data
+
+stages <- c("Growing_oocyte_10days",
+                  "Growing_oocyte_14days",
+                  "GV_8weeks",
+                  rep(c("MII_oocyte","zygote_PN5",
+                        "early_2cell","late_2cell",
+                        "cell4","cell8","ICM"),each=2))
+stages_level <- c("Growing_oocyte_10days",
+                  "Growing_oocyte_14days",
+                  "GV_8weeks",
+                  "MII_oocyte","zygote_PN5",
+                        "early_2cell","late_2cell",
+                        "cell4","cell8","ICM")
+
+x <- meta_data$stage
+set <- newSeqExpressionSet(as.matrix(express_matrix),
+                           phenoData = data.frame(x, row.names=colnames(express_matrix)))
+set
+
+colors <- brewer.pal(18, "Paired")
+plotRLE(set, outline=FALSE, ylim=c(-2, 2), col=colors[x])
+plotPCA(set, col=colors[x], cex=1.2)
+
+set <- betweenLaneNormalization(set, which="upper")
+plotRLE(set, outline=FALSE, ylim=c(-2, 2), col=colors[x])
+plotPCA(set, col=colors[x], cex=1.2)
+
+express_matrix <- set@assayData$normalizedCounts
+
+dir.create("02_express_matrix")
+tt_wt(express_matrix,"02_express_matrix/express_matrix.txt",row.names=T,col.names = T)
+# 对表达量进行筛选
+filter <- rowSums(express_matrix>10)>=2
+table(filter)
+express_matrix_filter10 <- express_matrix[filter,]
+
+colnames(express_matrix_filter10)
+tt_wt(express_matrix_filter10,"02_express_matrix/express_matrix_filter10.txt",row.names=T,col.names = T)
+```
+
+```{R convert to TPM}
+tpm_matrix <- do.call(cbind,base::lapply(colnames(express_matrix),FUN = function(x){
+  counts <- express_matrix[,x]
+  effLen <- fc_result_annotation[rownames(express_matrix),"Length"]
+  rate <- log(counts) - log(effLen)
+  denom <- log(sum(exp(rate)))
+  return(exp(rate-denom+log(1e6)))
+}))
+
+rownames(tpm_matrix) <- rownames(express_matrix)
+colnames(tpm_matrix) <- colnames(express_matrix)
+table(colSums(tpm_matrix))
+
+write.table(tpm_matrix,file="02_express_matrix/tpm_matrix.txt",quote = F,sep = "\t")
+```
+
+```{r marker barplot}
+tpm_matrix[rownames(tpm_matrix) %in% marker_APA,]
+
+tt_barplot <- function(gene_name){
+  temp <- data.frame(group=factor(stages,levels = stages_level),
+                   tpm=tpm_matrix[gene_name,])
+  p1 <- ggplot(temp, aes(x = group, y = tpm, fill=group)) +
+  geom_col(position="dodge",width =0.8,show.legend = F,size=2,fill="#DB5C25")+ #绘制柱状图
+  geom_point(show.legend = F,position = position_jitter(width = 0.1))+
+  labs(x=NULL,y=paste0(gene_name," tpm"))+#标题
+  theme_prism(palette = "floral",
+              base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+              base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+              base_size = 16,  # 图形的字体大小
+              base_line_size = 0.8, # 坐标轴的粗细
+              axis_text_angle = 45)+ # 可选值有 0，45，90，270
+  theme(plot.title = element_text(size=16,hjust = -0.5))
+  #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+  #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+  #scale_fill_prism(palette = "floral")#使用ggprism包修改颜色
+  print(p1)
+}
+
+dir.create("08_marker")
+pdf("08_marker/01_APA_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_APA[marker_APA %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+tt_barplot("Gapdh")
+tt_barplot("Actb")
+dev.off()
+
+pdf("08_marker/01_toti_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_toti[marker_toti %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/01_pluri_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_pluri[marker_pluri %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/01_TE_TSC_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_TE_TSC[marker_TE_TSC %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/01_TSC_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_TSC[marker_TSC %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/01_PrE_XEN_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_PrE_XEN[marker_PrE_XEN %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+dev.off()
+
+pdf("08_marker/01_APAperturb_barplot.pdf",width = 3.5,height = 4)
+for (i in marker_APAperturb[marker_APAperturb %in% rownames(tpm_matrix)]){
+  tt_barplot(i)
+}
+tt_barplot("Gapdh")
+tt_barplot("Actb")
+dev.off()
+
+```
+
+```{r marker heatmap}
+group <- c("toti","pluri","PrE_XEN","TE_TSC","TSC","APAperturb")
+
+for (i in group){
+  temp <- t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% get(paste0("marker_",i)),c(4:17)])))
+  temp <- na.omit(temp)
+  heatmap <- Heatmap(matrix = temp,name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("08_marker/08_heatmap_cluster_col_",i,".pdf"))
+heatmap <- draw(heatmap)
+dev.off()
+
+}
+```

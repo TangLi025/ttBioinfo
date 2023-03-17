@@ -10,10 +10,204 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(GenomeInfoDb)
 library(rtracklayer)
+library(stringr)
 library(venn)
+library(ttFunctions)
 
 require(knitr)
 opts_knit$set(root.dir = "~/reference/annotation/")
+```
+
+### genename
+```{r}
+# 把mm9\mm10\mm39的基因名对应起来
+gtf_mm9 <- import("mm9/Mus_musculus.NCBIM37.67.gtf")
+gtf_mm10 <- import("mm10/Mus_musculus.GRCm38.102.gtf")
+gtf_mm39 <- import("mm39/Mus_musculus.GRCm39.108.gtf")
+
+table(duplicated(gtf_mm9$gene_id))
+gtf_mm9_gene <- as.data.frame(gtf_mm9[!duplicated(gtf_mm9$gene_id),])
+gtf_mm10_gene <- as.data.frame(gtf_mm10[gtf_mm10$type=="gene",])
+gtf_mm39_gene <- as.data.frame(gtf_mm39[gtf_mm39$type=="gene",])
+
+venn(list(mm9=gtf_mm9_gene$gene_id,
+          mm10=gtf_mm10_gene$gene_id,
+          mm39=gtf_mm39_gene$gene_id))
+
+venn(list(mm9=gtf_mm9_gene$gene_name,
+          mm10=gtf_mm10_gene$gene_name,
+          mm39=gtf_mm39_gene$gene_name))
+
+gtf_mm9_gene_pc <- gtf_mm9_gene[gtf_mm9_gene$gene_biotype=="protein_coding",]
+gtf_mm10_gene_pc <- gtf_mm10_gene[gtf_mm10_gene$gene_biotype=="protein_coding",]
+gtf_mm39_gene_pc <- gtf_mm39_gene[gtf_mm39_gene$gene_biotype=="protein_coding",]
+
+
+venn(list(mm9_pc=gtf_mm9_gene_pc$gene_id,
+          mm10_pc=gtf_mm10_gene_pc$gene_id,
+          mm39_pc=gtf_mm39_gene_pc$gene_id))
+
+venn(list(mm9_pc=gtf_mm9_gene_pc$gene_name,
+          mm10_pc=gtf_mm10_gene_pc$gene_name,
+          mm39_pc=gtf_mm39_gene_pc$gene_name))
+
+gene_id_name <- merge(gtf_mm9_gene[,c(10,13)],gtf_mm10_gene[,c(10,12)],by="gene_id",all=T)
+
+gene_id_name <- merge(gene_id_name,gtf_mm39_gene[,c(10,12)],by="gene_id",all=T)
+colnames(gene_id_name) <- c("gene_id","mm9","mm10","mm39")
+
+#gene_id_name$mm9 <- str_to_title(gene_id_name$mm9)
+#gene_id_name$mm10 <- str_to_title(gene_id_name$mm10)
+#gene_id_name$mm39 <- str_to_title(gene_id_name$mm39)
+
+tt_wt(gene_id_name,"gene_id_name_mm.txt",col.names=T)
+
+gene_id_name$all <- paste(gene_id_name$mm9,gene_id_name$mm10,gene_id_name$mm39,sep = "_")
+
+table(is.na(gene_id_name$all))
+table(duplicated(gene_id_name$all))
+
+gene_id_name_dedup <- gene_id_name[!duplicated(gene_id_name$all),]
+
+gene_id_name_final <- gene_id_name_dedup[rowSums(is.na(gene_id_name_dedup))==0,1:4]
+gene_id_name_NA1 <- gene_id_name_dedup[rowSums(is.na(gene_id_name_dedup))==1,1:4]
+gene_id_name_NA2 <- gene_id_name_dedup[rowSums(is.na(gene_id_name_dedup))==2,1:4]
+
+gene_id_name_dedup <- gene_id_name_dedup[!rowSums(is.na(gene_id_name_dedup))==0,1:4]
+
+for (i in 1:dim(gene_id_name_NA1)[1]){
+  if (is.na(gene_id_name_NA1[i,"mm9"])){
+  if (gene_id_name_NA1[i,"mm10"] %in% gene_id_name_dedup$mm9){
+    gene_id_name_NA1[i,"mm9"] <- gene_id_name_NA1[i,"mm10"]
+  } else if (gene_id_name_NA1[i,"mm39"] %in% gene_id_name_dedup$mm9){
+    gene_id_name_NA1[i,"mm9"] <- gene_id_name_NA1[i,"mm39"]
+  }
+} else if (is.na(gene_id_name_NA1[i,"mm39"])){
+  if (gene_id_name_NA1[i,"mm10"] %in% gene_id_name_dedup$mm39){
+    gene_id_name_NA1[i,"mm39"] <- gene_id_name_NA1[i,"mm10"]
+  } else if (gene_id_name_NA1[i,"mm9"] %in% gene_id_name_dedup$mm39){
+    gene_id_name_NA1[i,"mm39"] <- gene_id_name_NA1[i,"mm9"]
+  }
+}
+  if (i %% 1000==0){
+    print(i)
+  }
+}
+
+table(rowSums(is.na(gene_id_name_NA1)))
+
+gene_id_name_final <- rbind(gene_id_name_final,gene_id_name_NA1)
+
+for (i in 1:dim(gene_id_name_NA2)[1]){
+  if (!is.na(gene_id_name_NA2[i,"mm9"])){
+    if (gene_id_name_NA2[i,"mm9"] %in% gene_id_name_NA2$mm10){
+      gene_id_name_NA2[i,"mm10"] <- gene_id_name_NA2[i,"mm9"]
+    } 
+    if (!gene_id_name_NA2[i,"mm9"] %in% gene_id_name_NA2$mm39){
+      gene_id_name_NA2[i,"mm39"] <- gene_id_name_NA2[i,"mm9"]
+    }
+  } else if (!is.na(gene_id_name_NA2[i,"mm39"])){
+    if (gene_id_name_NA2[i,"mm39"] %in% gene_id_name_NA2$mm10){
+      gene_id_name_NA2[i,"mm10"] <- gene_id_name_NA2[i,"mm39"]
+    }
+    if (gene_id_name_NA2[i,"mm39"] %in% gene_id_name_NA2$mm9){
+    gene_id_name_NA2[i,"mm9"] <- gene_id_name_NA2[i,"mm39"]
+    }
+  } else if (!is.na(gene_id_name_NA2[i,"mm10"])){
+    if (gene_id_name_NA2[i,"mm10"] %in% gene_id_name_NA2$mm39){
+      gene_id_name_NA2[i,"mm39"] <- gene_id_name_NA2[i,"mm10"]
+    }
+    if (gene_id_name_NA2[i,"mm10"] %in% gene_id_name_NA2$mm9){
+    gene_id_name_NA2[i,"mm9"] <- gene_id_name_NA2[i,"mm10"]
+    }
+  }
+  if (i %% 1000==0){
+    print(i)
+  }
+}
+table(rowSums(is.na(gene_id_name_NA2)))
+
+gene_id_name_final <- rbind(gene_id_name_final,gene_id_name_NA2)
+
+gene_id_name_final$all <- paste(gene_id_name_final$mm9,gene_id_name_final$mm10,gene_id_name_final$mm39,sep = "_")
+
+gene_id_name_dedup2 <- gene_id_name_final[!duplicated(gene_id_name_final$all),]
+
+# table(gene_id_name_dedup2$mm39 %in% gene_id_name_final$mm39)
+# gene_id_name_dedup <- gene_id_name_dedup[!(gene_id_name_dedup$mm39 %in% gene_id_name_final$mm39),]
+# 
+# table(gene_id_name_dedup$mm10 %in% gene_id_name_final$mm10)
+# gene_id_name_dedup <- gene_id_name_dedup[!(gene_id_name_dedup$mm10 %in% gene_id_name_final$mm10),]
+# 
+# table(gene_id_name_dedup$mm9 %in% gene_id_name_final$mm9)
+# gene_id_name_dedup <- gene_id_name_dedup[!(gene_id_name_dedup$mm9 %in% gene_id_name_final$mm9),]
+# 
+# 
+# venn(list(gene_id_name_dedup$mm9,gene_id_name_dedup$mm10,gene_id_name_dedup$mm39))
+# 
+# gene_name_all <- c(gene_id_name_dedup$mm9,gene_id_name_dedup$mm10,gene_id_name_dedup$mm39)
+# 
+# gene_name_all <- gene_name_all[!duplicated(gene_name_all)]
+# 
+# table(is.na(gene_name_all))
+# 
+# gene_name_all <- gene_name_all[!is.na(gene_name_all)]
+# 
+# j=1
+# for (i in gene_name_all){
+#   if(j %% 1000==0){
+#     print(j)
+#   }
+#   if ((i %in% gene_id_name_dedup$mm9)&(i %in% gene_id_name_dedup$mm10)&(i %in% gene_id_name_dedup$mm39)){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),i,i,i))
+#   } else if ((i %in% gene_id_name_dedup$mm9)&(i %in% gene_id_name_dedup$mm10)){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),i,i,NA))
+#   } else if ((i %in% gene_id_name_dedup$mm9)&(i %in% gene_id_name_dedup$mm39)){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),i,NA,i))
+#   } else if ((i %in% gene_id_name_dedup$mm10)&(i %in% gene_id_name_dedup$mm39)){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),NA,i,i))
+#   } else if (i %in% gene_id_name_dedup$mm9){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),i,NA,NA))
+#   } else if (i %in% gene_id_name_dedup$mm10){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),NA,i,NA))
+#   } else if (i %in% gene_id_name_dedup$mm39){
+#     gene_id_name_final <- rbind(gene_id_name_final,c(paste0("mamual_",i),NA,NA,i))
+#   }
+#   j <- j+1
+# }
+# 
+# table(duplicated(gene_id_name_final$mm39[!is.na(gene_id_name_final$mm39)]))
+# gene_id_name_final$mm39[!is.na(gene_id_name_final$mm39)][duplicated(gene_id_name_final$mm39[!is.na(gene_id_name_final$mm39)])]
+# 
+# table(duplicated(gene_id_name_final$mm10[!is.na(gene_id_name_final$mm10)]))
+# gene_id_name_final$mm10[!is.na(gene_id_name_final$mm10)][duplicated(gene_id_name_final$mm10[!is.na(gene_id_name_final$mm10)])]
+# 
+# table(duplicated(gene_id_name_final$mm9[!is.na(gene_id_name_final$mm9)]))
+# gene_id_name_final$mm9[!is.na(gene_id_name_final$mm9)][duplicated(gene_id_name_final$mm9[!is.na(gene_id_name_final$mm9)])]
+
+tt_wt(gene_id_name_dedup2[,2:4],"gene_id_name_final2_mm.txt",col.names = T)
+
+venn(list(gene_id_name$mm9,gene_id_name_final$mm9))
+venn(list(gene_id_name$mm10,gene_id_name_final$mm10))
+venn(list(gene_id_name$mm39,gene_id_name_final$mm39))
+
+
+
+
+
+gene_id_name_dedup[gene_id_name_dedupintersect(intersect(gene_id_name_dedup$mm9,gene_id_name_dedup$mm10),gene_id_name_dedup$mm39),]
+
+gene_id_name_dedup[(gene_id_name_dedup$mm9 %in% gene_id_name_final$mm9),]
+
+gene_id_name_dedup[(gene_id_name_dedup$mm9 %in% gene_id_name_dedup[duplicated(gene_id_name_dedup$mm9),"mm9"]) & rowSums(is.na(gene_id_name_dedup))==0,]
+
+table(duplicated(gene_id_name_dedup[!is.na(gene_id_name_dedup$mm9),]$mm9))
+gene_id_name_dedup[duplicated(gene_id_name_dedup[!is.na(gene_id_name_dedup$mm9),]$mm9),]
+rowSums(is.na(gene_id_name_dedup))
+
+table(rowSums(is.na(gene_id_name_dedup)))
+
+
 ```
 
 ## hg38

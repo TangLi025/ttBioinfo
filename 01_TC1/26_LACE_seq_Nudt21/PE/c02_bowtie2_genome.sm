@@ -1,0 +1,32 @@
+SAMPLE=["P0_input","P0_IP_1","P0_IP_2","P0_IP_3","P9_input","P9_IP_1","P9_IP_2","P9_IP_3"]
+
+READ=["1","2"]
+
+INDEX="/disk/user_09/reference/index/bowtie2/mm39/mm39"
+
+MAPPING_THREADS = 16
+
+rule all:
+  input:
+    expand("03_bowtie2_mapping/01_bam_raw/{sample}.bam",sample=SAMPLE)
+    
+rule bowtie2_mapping:
+  input:
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz"
+  output:
+    bam="03_bowtie2_mapping/01_bam_raw/{sample}.bam",
+    summary="info/03_bowtie2_mapping/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX 
+  log:
+    "logs/03_bowtie2_mapping/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 2> {output.summary} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """

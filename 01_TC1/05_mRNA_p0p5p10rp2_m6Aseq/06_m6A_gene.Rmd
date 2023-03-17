@@ -1,0 +1,281 @@
+---
+title: "06_m6A_gene"
+author: "Tang Li"
+date: '2022-11-19'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ChIPpeakAnno)
+library(ggplot2)
+library(ggpubr)
+#devtools::install_github("ricardo-bion/ggradar")
+library(ggradar)
+require(ggseqlogo)
+library(Guitar)
+library(GenomicFeatures)
+#install.packages('nVennR')
+library(nVennR)
+library(patchwork)
+library(QNB)
+library(reshape2)
+library(rtracklayer)
+library(Rsubread)
+library(tidyverse)
+#install.packages("Vennerable", repos="http://R-Forge.R-project.org")
+library(Vennerable)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/03_TC1_caRNA/04_m6A_gene/")
+```
+
+### QNB ca-mRNA
+
+```{r gene featureCounts cpm}
+bam_dir <- "/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/11_bam_merge/"
+sample_name <- paste(rep(c("p10","p0","rp2"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/03_TC1_caRNA/01_bam_zyf/11_bam_merge/flagstat/reads_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(5,6,7,8,1,2,3,4,13,14,15,16)]
+
+## p10
+M3IN_gene_fc <- featureCounts(files=bamfiles,
+                               annot.ext = '~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf',
+                               isGTFAnnotationFile = T,
+                               GTF.featureType = "gene",
+                               GTF.attrType.extra = c("gene_name"),
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_gene_counts <- M3IN_gene_fc$counts
+colnames(M3IN_gene_counts) <- sample_name
+
+tt_wt(M3IN_gene_counts,"M3IN_gene_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_gene_counts)
+
+M3IN_gene_cpm <- as.data.frame(t(t(M3IN_gene_counts)/total_Reads * 1000000))#参考cpm定义
+colSums(M3IN_gene_cpm)
+
+table(rowSums(M3IN_gene_cpm>0.5)>=2)
+# FALSE  TRUE 
+#  7985 23797
+M3IN_gene_cpm <- M3IN_gene_cpm[rowSums(M3IN_gene_cpm>0.5)>=2,]
+
+table(rowSums(M3IN_gene_counts>10)>=2)
+# FALSE  TRUE 
+#  4223 27559
+M3IN_gene_counts_filter <- M3IN_gene_counts[rowSums(M3IN_gene_counts>10)>=2,]
+
+```
+
+```{r QNB}
+dir.create("01_QNB_output_gene")
+
+p10_ip_gene_counts = M3IN_gene_counts_filter[,3:4]
+p10_input_gene_counts = M3IN_gene_counts_filter[,1:2]
+p0_ip_gene_counts = M3IN_gene_counts_filter[,7:8]
+p0_input_gene_counts = M3IN_gene_counts_filter[,5:6]
+rp2_ip_gene_counts = M3IN_gene_counts_filter[,11:12]
+rp2_input_gene_counts = M3IN_gene_counts_filter[,9:10]
+
+head(p10_ip_gene_counts)
+
+# When size.factor is not NA
+total_number_reads_p10_ip <- c(63139881,69162349)
+total_number_reads_p0_ip <- c(67542625,52345318)
+total_number_reads_rp2_ip <- c(78116866,66711470)
+total_number_reads_p10_input <- c(57358338,70205279)
+total_number_reads_p0_input <- c(41608064,68341489)
+total_number_reads_rp2_input <- c(70496756,70107156)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_p10_ip,
+                                  total_number_reads_p0_ip,
+                                  total_number_reads_rp2_ip,
+                                  total_number_reads_p10_input,
+                                  total_number_reads_p0_input,
+                                  total_number_reads_rp2_input))))
+
+nf_spikein <- c(0.843785559,0.870344958,1.04097382,1.018719987,1.130899977,1.095275699)
+```
+
+```{r M3IN p10 p0}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_p0_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_p0_input/standard_library_size)
+
+dir.create("01_QNB_output_gene/p10_p0")
+result_p10_p0 = qnbtest(p10_ip_gene_counts, p0_ip_gene_counts, p10_input_gene_counts, p0_input_gene_counts, mode="per-condition",output.dir = "01_QNB_output_gene/p10_p0",size.factor = size.factor.spikein)
+
+tt_wt(result_p10_p0,"01_QNB_output_gene/p10_p0/result_p10_p0.txt",row.names = T,col.names = T)
+
+result_p10_p0_sig <- result_p10_p0[result_p10_p0$padj<0.05,]
+table(result_p10_p0_sig$log2.RR<0)
+# FALSE  TRUE 
+#  2514  5072
+
+```
+
+```{r M3IN p10 rp2}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_rp2_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_rp2_input/standard_library_size)
+
+dir.create("01_QNB_output_gene/p10_rp2")
+result_p10_rp2 = qnbtest(p10_ip_gene_counts, rp2_ip_gene_counts, p10_input_gene_counts, rp2_input_gene_counts, mode="per-condition",output.dir = "01_QNB_output_gene/p10_rp2",size.factor = size.factor.spikein)
+
+tt_wt(result_p10_rp2,"01_QNB_output_gene/p10_rp2/result_p10_rp2.txt",row.names = T,col.names = T)
+
+result_p10_rp2_sig <- as.data.frame(result_p10_rp2[result_p10_rp2$padj<0.05,])
+table(result_p10_rp2_sig$log2.RR<0)
+# FALSE  TRUE 
+#  1064  2820
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR>0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR>0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR<0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR<0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR>0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR<0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR<0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR>0]))
+
+```
+
+### ca-mRNA exon
+```{r gene featureCounts cpm}
+
+M3IN_exon_fc <- featureCounts(files=bamfiles,
+                               annot.ext = '~/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc_lnc.gtf',
+                               isGTFAnnotationFile = T,
+                               GTF.featureType = "exon",
+                               GTF.attrType.extra = c("gene_name"),
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_exon_counts <- M3IN_exon_fc$counts
+colnames(M3IN_exon_counts) <- sample_name
+
+tt_wt(M3IN_exon_counts,"M3IN_exon_counts.txt",row.names = T,col.names = T)
+
+colSums(M3IN_exon_counts)
+
+M3IN_exon_cpm <- as.data.frame(t(t(M3IN_exon_counts)/total_Reads * 1000000))#参考cpm定义
+colSums(M3IN_exon_cpm)
+
+table(rowSums(M3IN_exon_cpm>0.5)>=2)
+# FALSE  TRUE 
+# 13583 18199
+#M3IN_exon_cpm <- M3IN_exon_cpm[rowSums(M3IN_exon_cpm>0.5)>=2,]
+
+table(rowSums(M3IN_exon_counts>10)>=2)
+# FALSE  TRUE 
+#  7286 24496
+M3IN_exon_counts_filter <- M3IN_exon_counts[rowSums(M3IN_exon_counts>10)>=2,]
+
+```
+
+```{r QNB}
+#dir.create("01_QNB_output")
+
+p10_ip_exon_counts = M3IN_exon_counts_filter[,3:4]
+p10_input_exon_counts = M3IN_exon_counts_filter[,1:2]
+p0_ip_exon_counts = M3IN_exon_counts_filter[,7:8]
+p0_input_exon_counts = M3IN_exon_counts_filter[,5:6]
+rp2_ip_exon_counts = M3IN_exon_counts_filter[,11:12]
+rp2_input_exon_counts = M3IN_exon_counts_filter[,9:10]
+
+
+```
+
+```{r M3IN p10 p0}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_p0_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_p0_input/standard_library_size)
+dir.create("02_QNB_output_exon/")
+dir.create("02_QNB_output_exon/p10_p0")
+result_p10_p0 = qnbtest(p10_ip_exon_counts, p0_ip_exon_counts, p10_input_exon_counts, p0_input_exon_counts, mode="per-condition",output.dir = "02_QNB_output_exon/p10_p0",size.factor = size.factor.spikein)
+
+tt_wt(result_p10_p0,"02_QNB_output_exon/p10_p0/result_p10_p0.txt",row.names = T,col.names = T)
+
+result_p10_p0_sig <- result_p10_p0[result_p10_p0$padj<0.05,]
+table(result_p10_p0_sig$log2.RR<0)
+# FALSE  TRUE 
+#   902  3443
+
+```
+
+```{r M3IN p10 rp2}
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_p10_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_rp2_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_p10_input/standard_library_size,
+                   treated_input=total_number_reads_rp2_input/standard_library_size)
+
+dir.create("02_QNB_output_exon//p10_rp2")
+result_p10_rp2 = qnbtest(p10_ip_exon_counts, rp2_ip_exon_counts, p10_input_exon_counts, rp2_input_exon_counts, mode="per-condition",output.dir = "02_QNB_output_exon/p10_rp2",size.factor = size.factor.spikein)
+
+tt_wt(result_p10_rp2,"02_QNB_output_exon/p10_rp2/result_p10_rp2.txt",row.names = T,col.names = T)
+
+result_p10_rp2_sig <- as.data.frame(result_p10_rp2[result_p10_rp2$padj<0.05,])
+table(result_p10_rp2_sig$log2.RR<0)
+# FALSE  TRUE 
+#   555  1258
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR>0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR>0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR<0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR<0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR>0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR<0]))
+
+length(intersect(rownames(result_p10_p0_sig)[result_p10_p0_sig$log2.RR<0],
+                 rownames(result_p10_rp2_sig)[result_p10_rp2_sig$log2.RR>0]))
+
+```
+
+```{r}
+QNB_read.table("")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

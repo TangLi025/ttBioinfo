@@ -1,0 +1,68 @@
+SAMPLE=["D_Zygote","D_early2cell","D_mid2cell","D_late2cell","D_4cell","D_8cell","D_16cell","D_earlyblast","D_midblast","D_lateblast"]
+
+D_Zygote=[i for i in range(1,5)]
+D_early2cell=[i for i in range(1,9)]
+D_mid2cell=[i for i in range(1,13)]
+D_late2cell=[i for i in range(1,11)]
+D_4cell=[i for i in range(1,15)]
+D_8cell=[i for i in range(1,29)]
+D_16cell=[i for i in range(1,51)]
+D_earlyblast=[i for i in range(1,44)]
+D_midblast=[i for i in range(1,61)]
+D_lateblast=[i for i in range(1,31)]
+
+rule all:
+  input:
+    "00_info/02_trim_galore_illumina/01_fastqc/multiqc_report.html"
+    
+rule trim_galore:
+  input:
+    "01_trim_galore/{sample}_{rep}_trimmed.fq.gz"            
+  output:
+    "02_trim_galore_illumina/{sample}_{rep}_trimmed_trimmed.fq.gz"
+  params:
+    output_dir="02_trim_galore_illumina"
+  log:
+    "logs/02_trim_galore_illumina/{sample}_{rep}.log"
+  threads: 6
+  shell:
+    "/disk/user_09/anaconda3/envs/trim-galore/bin/trim_galore \
+      -o {params.output_dir} --gzip \
+      --path_to_cutadapt /disk/user_09/anaconda3/envs/trim-galore/bin/cutadapt \
+      -j {threads} {input} 1> {log} 2>&1"
+      
+rule fastqc2:
+  input:
+    "02_trim_galore_illumina/{sample}_{rep}_trimmed_trimmed.fq.gz"
+  output:
+    "00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.html",
+    "00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip"
+  log:
+    "logs/02_trim_galore_illumina/01_fastqc/{sample}_{rep}.log"
+  threads: 1
+  params:
+    out_dir="00_info/02_trim_galore_illumina/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/fastqc -t {threads} -q -o {params.out_dir} {input} > {log} 2>&1"
+    
+rule multiqc2:
+  input:
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[0],rep=D_Zygote),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[1],rep=D_early2cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[2],rep=D_mid2cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[3],rep=D_late2cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[4],rep=D_4cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[5],rep=D_8cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[6],rep=D_16cell),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[7],rep=D_earlyblast),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[8],rep=D_midblast),
+    expand("00_info/02_trim_galore_illumina/01_fastqc/{sample}_{rep}_trimmed_trimmed_fastqc.zip", sample=SAMPLE[9],rep=D_lateblast)
+  output:
+    "00_info/02_trim_galore_illumina/01_fastqc/multiqc_report.html"
+  log:
+    "logs/02_trim_galore_illumina/01_fastqc/multiqc2.log"
+  threads: 1
+  params:
+    out_dir="00_info/02_trim_galore_illumina/01_fastqc"
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/multiqc {input} -o {params.out_dir} > {log} 2>&1"
