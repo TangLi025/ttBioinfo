@@ -1,0 +1,715 @@
+---
+title: "01_peak_qc"
+author: "Tang Li"
+date: '2023-03-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ChIPpeakAnno)
+library(GenomicFeatures)
+library(Vennerable)
+library(ttFunctions)
+
+library(tidyverse)
+
+library(ggpubr)
+
+library(Guitar)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/26_LACE_seq_Nudt21/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/")
+```
+
+```{r peakAnno replication}
+
+common_peak_dir <- "/disk/user_09/Data/01_TC1/26_LACE_seq_Nudt21/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/"
+P0_bed1 <- file.path(common_peak_dir,"P0_IP_1_peaks.bed")
+P0_bed2 <- file.path(common_peak_dir,"P0_IP_2_peaks.bed")
+
+P9_bed1 <- file.path(common_peak_dir,"P9_IP_1_peaks.bed")
+P9_bed2 <- file.path(common_peak_dir,"P9_IP_2_peaks.bed")
+
+P0_1 <- ChIPpeakAnno::toGRanges(P0_bed1, format="BED", header=FALSE)
+P0_2 <- ChIPpeakAnno::toGRanges(P0_bed2, format="BED", header=FALSE)
+
+P9_1 <- ChIPpeakAnno::toGRanges(P9_bed1, format="BED", header=FALSE)
+P9_2 <- ChIPpeakAnno::toGRanges(P9_bed2, format="BED", header=FALSE)
+
+## must keep the class exactly same as gr1$score, i.e., numeric.
+P0_1$score <- as.numeric(P0_1$score) 
+P0_2$score <- as.numeric(P0_2$score) 
+P9_1$score <- as.numeric(P9_1$score) 
+P9_2$score <- as.numeric(P9_2$score) 
+
+ol_P0 <- findOverlapsOfPeaks(P0_1, P0_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_P0 <- addMetadata(ol_P0, colNames="score", FUN=base::mean) 
+ol_P0$peaklist[["P0_1///P0_2"]]
+
+ol_P9 <- findOverlapsOfPeaks(P9_1, P9_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_P9 <- addMetadata(ol_P9, colNames="score", FUN=base::mean) 
+ol_P9$peaklist[["P9_1///P9_2"]]
+
+
+dir.create("01_replication")
+pdf("01_replication/01_peak_overlap.pdf")
+makeVennDiagram(ol_P0, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5,
+                margin=0.1) 
+
+makeVennDiagram(ol_P9, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5,
+                margin=0.1) 
+dev.off()
+```
+
+```{r peak overlap between group}
+P0 <- ol_P0$peaklist[["P0_1///P0_2"]]
+P9 <- ol_P9$peaklist[["P9_1///P9_2"]]
+
+P0_export <- as.data.frame(P0)
+write.table(P0_export[,c(1,2,3,6,7,5)],"01_replication/P0_common_peaks.bed",quote = FALSE,row.names = FALSE,col.names = FALSE,sep="\t")
+P9_export <- as.data.frame(P9)
+write.table(P9_export[,c(1,2,3,6,7,5)],"01_replication/P9_common_peaks.bed",quote = FALSE,row.names = FALSE,col.names = FALSE,sep="\t")
+
+ol <- findOverlapsOfPeaks(P0,P9)
+
+pdf("01_replication/02_peak_overlap_P0P9.pdf")
+makeVennDiagram(ol, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2,
+                margin=0.1) 
+dev.off()
+
+
+```
+
+
+```{r anno_distribution}
+#dir.create("03_annotation")
+# read annotation file from macs2 and homer
+P0_1_anno <- read.delim('02_annotation/P0_IP_1_anno.txt',header = T)
+P0_2_anno <- read.delim('02_annotation/P0_IP_2_anno.txt',header = T)
+P9_1_anno <- read.delim('02_annotation/P9_IP_1_anno.txt',header = T)
+P9_2_anno <- read.delim('02_annotation/P9_IP_2_anno.txt',header = T)
+
+# save as list
+df <- list(P0_1_anno = P0_1_anno$Annotation,P0_2_anno = P0_2_anno$Annotation,
+           P9_1_anno = P9_1_anno$Annotation,P9_2_anno = P9_2_anno$Annotation)
+
+# save separately
+lapply(1:4, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('P0_1','P0_2','P9_1','P9_2')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('P0_1','P0_2','P9_1','P9_2'))
+
+
+pdf("./02_annotation/02_Distribution_of_peaks.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+### metagene
+```{r metagene}
+peak_dir <- "/disk/user_09/Data/01_TC1/26_LACE_seq_Nudt21/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/"
+
+# read bed file
+stBedFiles <- list(file.path(peak_dir,"P0_IP_1_peaks.bed"),
+                   file.path(peak_dir,"P0_IP_2_peaks.bed"),
+                   file.path(peak_dir,"P9_IP_1_peaks.bed"),
+                   file.path(peak_dir,"P9_IP_2_peaks.bed"))
+
+# prepare annotation file
+gtffile <- file.path("/disk/user_09/reference/annotation/mm39/Mus_musculus.GRCm39.108.basic.gtf")    #my own gtf
+txdb <- makeTxDbFromGFF(gtffile, format="gtf", circ_seqs=character())#read gtf file to construct TxDb
+
+dir.create("04_metagene")
+
+p <- GuitarPlot(txTxdb = txdb,
+                   stBedFiles = stBedFiles,
+                   headOrtail = F,
+                   enableCI = FALSE,
+                   mapFilterTranscript = T,
+                   pltTxType = c("mrna"),
+                   stGroupName = c("P0_1","P0_2","P9_1","P9_2"))
+# draw
+pdf("./04_metagene/metagene_profiles_of_peak.pdf")
+
+p+theme_bw()+
+  theme(plot.margin = unit(c(4,0.5,4,0.5),"cm"))
+dev.off()
+
+
+
+```
+
+```{r }
+marker_all <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/all")$V1
+marker_toti <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//toti")$V1
+marker_pluri <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//pluri")$V1
+marker_TE_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//TE_TSC")$V1
+marker_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//TSC")$V1
+marker_PrE_XEN <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//PrE_XEN")$V1
+marker_APA <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2//APA")$V1
+marker_APAperturb <- read.table("~/Data/01_TC1/00_gene_set/all/APA_perturb")$V1
+
+gtf <- import(gtffile)
+
+gtf_transcript <- as_tibble(gtf[gtf$type=="transcript",])[,c(12,14,15)]
+
+
+P0_1_anno$transcript_id <-  str_sub(sapply(strsplit(P0_1_anno$Annotation,split = '(',fixed = T),"[",2),1,18)
+P0_1_anno$transcript_id[is.na(P0_1_anno$transcript_id)] <- "Intergenic"
+P0_1_anno <- merge(P0_1_anno,gtf_transcript,by="transcript_id")
+P0_1_anno$region <- sapply(strsplit(P0_1_anno$Annotation,split = ' (',fixed = T),"[",1)
+P0_1_anno_pc_genes <- unique(P0_1_anno[P0_1_anno$gene_biotype=="protein_coding","gene_name"])
+tt_wt(P0_1_anno_pc_genes,"02_annotation/P0_1_anno_pc_genes")
+
+P0_2_anno$transcript_id <-  str_sub(sapply(strsplit(P0_2_anno$Annotation,split = '(',fixed = T),"[",2),1,18)
+P0_2_anno$transcript_id[is.na(P0_2_anno$transcript_id)] <- "Intergenic"
+P0_2_anno <- merge(P0_2_anno,gtf_transcript,by="transcript_id")
+P0_2_anno$region <- sapply(strsplit(P0_2_anno$Annotation,split = ' (',fixed = T),"[",1)
+P0_2_anno_pc_genes <- unique(P0_2_anno[P0_2_anno$gene_biotype=="protein_coding","gene_name"])
+tt_wt(P0_2_anno_pc_genes,"02_annotation/P0_2_anno_pc_genes")
+
+P9_1_anno$transcript_id <-  str_sub(sapply(strsplit(P9_1_anno$Annotation,split = '(',fixed = T),"[",2),1,18)
+P9_1_anno$transcript_id[is.na(P9_1_anno$transcript_id)] <- "Intergenic"
+P9_1_anno <- merge(P9_1_anno,gtf_transcript,by="transcript_id")
+P9_1_anno$region <- sapply(strsplit(P9_1_anno$Annotation,split = ' (',fixed = T),"[",1)
+P9_1_anno_pc_genes <- unique(P9_1_anno[P9_1_anno$gene_biotype=="protein_coding","gene_name"])
+tt_wt(P9_1_anno_pc_genes,"02_annotation/P9_1_anno_pc_genes")
+
+P9_2_anno$transcript_id <-  str_sub(sapply(strsplit(P9_2_anno$Annotation,split = '(',fixed = T),"[",2),1,18)
+P9_2_anno$transcript_id[is.na(P9_2_anno$transcript_id)] <- "Intergenic"
+P9_2_anno <- merge(P9_2_anno,gtf_transcript,by="transcript_id")
+P9_2_anno$region <- sapply(strsplit(P9_2_anno$Annotation,split = ' (',fixed = T),"[",1)
+P9_2_anno_pc_genes <- unique(P9_2_anno[P9_2_anno$gene_biotype=="protein_coding","gene_name"])
+tt_wt(P9_2_anno_pc_genes,"02_annotation/P9_2_anno_pc_genes")
+
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P0_1_anno_pc_genes[P0_1_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P0_2_anno_pc_genes[P0_2_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P9_1_anno_pc_genes[P9_1_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P9_2_anno_pc_genes[P9_2_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+Ribosome_genes <- read.table("../../../../../../00_gene_set/CC_Ribosome")$V1
+ribosome_biogenesis_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/ribosome_biogenesis")$V1
+mitochondrial_protein_containing_complex_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrial_protein_containing_complex")$V1
+mitochondrion_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrion_organization")$V1
+extracellular_matrix_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix_organization")$V1
+extracellular_matrix_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix")$V1
+
+for (i in c("Ribosome_genes","ribosome_biogenesis_genes","mitochondrial_protein_containing_complex_genes","mitochondrion_organization_genes","extracellular_matrix_organization_genes","extracellular_matrix_genes")){
+  print(i)
+  print(P0_1_anno_pc_genes[P0_1_anno_pc_genes %in% get(i)])
+}
+
+for (i in c("Ribosome_genes","ribosome_biogenesis_genes","mitochondrial_protein_containing_complex_genes","mitochondrion_organization_genes","extracellular_matrix_organization_genes","extracellular_matrix_genes")){
+  print(i)
+  print(P0_2_anno_pc_genes[P0_2_anno_pc_genes %in% get(i)])
+}
+
+for (i in c("Ribosome_genes","ribosome_biogenesis_genes","mitochondrial_protein_containing_complex_genes","mitochondrion_organization_genes","extracellular_matrix_organization_genes","extracellular_matrix_genes")){
+  print(i)
+  print(P9_1_anno_pc_genes[P9_1_anno_pc_genes %in% get(i)])
+}
+
+for (i in c("Ribosome_genes","ribosome_biogenesis_genes","mitochondrial_protein_containing_complex_genes","mitochondrion_organization_genes","extracellular_matrix_organization_genes","extracellular_matrix_genes")){
+  print(i)
+  print(P9_2_anno_pc_genes[P9_2_anno_pc_genes %in% get(i)])
+}
+
+
+## marker in extra
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(extracellular_matrix_genes[extracellular_matrix_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P0_2_anno_pc_genes[P0_2_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P9_1_anno_pc_genes[P9_1_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+for (i in c("toti","pluri","TSC","TE_TSC","PrE_XEN","APAperturb")){
+  print(i)
+  print(P9_2_anno_pc_genes[P9_2_anno_pc_genes %in% get(paste0("marker_",i))])
+}
+
+APA_perturb_target <- unique(c("Pabpc1","Papolg","Scaf4","Rbbp6","Cpsf6","Scaf1","Pcf11","Srsf3","Pabpn1","Phf3","Pabpc1","Ctr9","Cdc73","Pabpn1","Rbbp6","Cpsf6","Fip1l1","Pcf11","Srsf3",
+              "Sf3a1","Ctr9","Cdc73","Sympk","Scaf4","Rprd1a","Scaf11","Leo1","Rbbp6","Cpsf6","Fip1l1","Cstf1","Pcf11","Srsf3","Pabpn1",
+                      "Pabpc1","Sympk","Cpsf6","Srsf3","Pabpn1"))
+
+tt_wt(APA_perturb_target,"02_annotation/APA_perturb_target")
+
+```
+
+
+### motif
+```{r}
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/M3IN_0h/homerResults/motif23.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+M3IN_0h_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("M3IN_0h")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/02_motif/M3IN_4h/homerResults/motif24.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+M3IN_4h_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("M3IN_4h")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pwm.m <- t( read.table(paste0("03_motif_logo/01_motif/M3IN_12h/homerResults/motif8.similar1.motif"), header = F, comment.char = ">",col.names = c("A","C","G","U")) )
+M3IN_12h_motif <- ggplot() + geom_logo(pwm.m) + theme_logo()+
+  ylab("M3IN_12h")+
+   theme(axis.text.x = element_blank(),axis.text.y  = element_blank(),axis.title.y = element_text(angle = 0,vjust = 0.5,size=40))
+
+pdf("03_motif_logo/01_motif_logo.pdf",width = 8,height = 9)
+M3IN_0h_motif / M3IN_4h_motif / M3IN_12h_motif
+dev.off()
+
+```
+
+### peak class 
+```{r peak class}
+## 0h 4h 
+M3IN_0h_4h_peak_bed <- read.table("../04_bed_group_merge/M3IN_0h_M3IN_4h.bed")
+
+M3IN_0h_4h_peak_bed_0h_high <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="M3IN_0h_high"],]
+
+M3IN_0h_4h_peak_bed_4h_high <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="M3IN_4h_high"],]
+
+M3IN_0h_4h_peak_bed_nc <- M3IN_0h_4h_peak_bed[M3IN_0h_4h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_4h_cpm_mean_filter)[M3IN_0hM3IN_4h_cpm_mean_filter$group=="NC"],]
+
+tt_wt(M3IN_0h_4h_peak_bed_0h_high,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_0h_high.bed")
+tt_wt(M3IN_0h_4h_peak_bed_4h_high,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_4h_high.bed")
+tt_wt(M3IN_0h_4h_peak_bed_nc,"02_peak_m6A_level/f02_M3IN_0h_4h_peak_nc.bed")
+
+## 0h 12h 
+M3IN_0h_12h_peak_bed <- read.table("../04_bed_group_merge/M3IN_0h_M3IN_12h.bed")
+
+M3IN_0h_12h_peak_bed_0h_high <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="M3IN_0h_high"],]
+
+M3IN_0h_12h_peak_bed_12h_high <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="M3IN_12h_high"],]
+
+M3IN_0h_12h_peak_bed_nc <- M3IN_0h_12h_peak_bed[M3IN_0h_12h_peak_bed$V4 %in% rownames(M3IN_0hM3IN_12h_cpm_mean_filter)[M3IN_0hM3IN_12h_cpm_mean_filter$group=="NC"],]
+
+tt_wt(M3IN_0h_12h_peak_bed_0h_high,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_0h_high.bed")
+tt_wt(M3IN_0h_12h_peak_bed_12h_high,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_12h_high.bed")
+tt_wt(M3IN_0h_12h_peak_bed_nc,"02_peak_m6A_level/f02_M3IN_0h_12h_peak_nc.bed")
+
+```
+
+```{r anno_class_distribution}
+
+# read annotation file from macs2 and homer
+M3IN_0h_4h_0h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_0h_high_annotation.txt',header = T)
+M3IN_0h_4h_4h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_4h_high_annotation.txt',header = T)
+M3IN_0h_4h_nc_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_4h_peak_nc_annotation.txt',header = T)
+
+# save as list
+df <- list(M3IN_0h_4h_0h_high = M3IN_0h_4h_0h_high_anno$Annotation,
+           M3IN_0h_4h_4h_high = M3IN_0h_4h_4h_high_anno$Annotation,
+           M3IN_0h_4h_nc = M3IN_0h_4h_nc_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('0h_high','4h_high','nc')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('0h_high','4h_high','nc'))
+
+
+pdf("./03_annotation/05_Distribution_of_m6A_peaks_pc_lnc_M3IN_0h_4h_class.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+
+## 12h
+# read annotation file from macs2 and homer
+M3IN_0h_12h_0h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_0h_high_annotation.txt',header = T)
+M3IN_0h_12h_12h_high_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_12h_high_annotation.txt',header = T)
+M3IN_0h_12h_nc_anno <- read.delim('03_annotation/gencode_pc_lnc/M3IN_0h_12h_peak_nc_annotation.txt',header = T)
+
+# save as list
+df <- list(M3IN_0h_12h_0h_high = M3IN_0h_12h_0h_high_anno$Annotation,
+           M3IN_0h_12h_12h_high = M3IN_0h_12h_12h_high_anno$Annotation,
+           M3IN_0h_12h_nc = M3IN_0h_12h_nc_anno$Annotation)
+
+# save separately
+lapply(1:3, function(x){
+  tmp = sapply(strsplit(df[[x]],split = '\\('),'[',1)
+  res = table(tmp)
+}) %>% do.call('rbind',.) %>% as.data.frame() -> type_comb
+
+# add name
+type_comb$name = c('0h_high','12h_high','nc')
+
+# width to length
+final <- melt(type_comb)
+
+# factor
+final$name <- factor(final$name,levels = c('0h_high','12h_high','nc'))
+
+
+pdf("./03_annotation/05_Distribution_of_m6A_peaks_pc_lnc_M3IN_0h_12h_class.pdf")
+# draw pie
+ggplot(final,aes(x = '',y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_void() +
+  theme(legend.position = 'bottom',
+        strip.text.x = element_text(size= 20)) +
+  facet_wrap(~name) +
+  coord_polar(theta = 'y') +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types')
+
+# draw bar
+ggplot(final,aes(x = name,y = value,fill = variable)) +
+  geom_col(position = position_fill()) +
+  theme_bw(base_size = 18) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(legend.position = 'right',
+        strip.text.x = element_text(size= 18)) +
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('Percent')
+
+# draw bar
+ggplot(final,aes(x = variable,y = value,fill = name)) +
+  geom_col(position = position_dodge()) +
+  theme_bw(base_size = 18) +
+  theme_pubr()+
+  theme(legend.position = c(0.8,0.7),
+        plot.margin = unit(c(2,0.5,4,0.5),"cm"),
+        strip.text.x = element_text(size= 18)) +
+  theme(axis.text.x = element_text(angle = 45,vjust = 1,hjust = 1))+
+  scale_fill_brewer(palette = 'Set2',name = 'Region types') +
+  xlab('') + ylab('number of peaks')
+dev.off()
+```
+
+```{r exon anno GO}
+M3IN_0h_12h_0h_high_anno$annotation <- sapply(strsplit(M3IN_0h_12h_0h_high_anno$Annotation,split = " "),"[",1)
+
+M3IN_0h_12h_0h_high_anno_ETP <- M3IN_0h_12h_0h_high_anno[M3IN_0h_12h_0h_high_anno$annotation %in% c("exon","TTS","promoter-TSS"),]
+
+M3IN_0h_12h_0h_high_ETP_genes <- M3IN_0h_12h_0h_high_anno_ETP$Gene.Name[!duplicated(M3IN_0h_12h_0h_high_anno_ETP$Gene.Name)]
+
+M3IN_0h_12h_0h_high_ETP_pc_genes <- M3IN_0h_12h_0h_high_anno_ETP$Gene.Name[!duplicated(M3IN_0h_12h_0h_high_anno_ETP$Gene.Name) & M3IN_0h_12h_0h_high_anno_ETP$Gene.Type=="protein_coding"]
+
+dir.create("03_annotation/02_M3IN_0h_12h_class")
+tt_wt(M3IN_0h_12h_0h_high_ETP_pc_genes,"03_annotation/02_M3IN_0h_12h_class/M3IN_0h_12h_0h_high_ETP_pc_genes.txt")
+```
+
+```{r}
+length(intersect(M3IN_0h_12h_0h_high_generegion_genes,read.table("~/Data/01_TC1/04_TC1_mRNA/03_TPgene/T_gene2.txt")$V1))
+length(intersect(M3IN_0h_12h_0h_high_generegion_genes,read.table("~/Data/01_TC1/04_TC1_mRNA/03_TPgene/P_gene2.txt")$V1))
+
+
+
+```
+
+### QNB peak
+
+```{r QNB}
+# When size.factor is not NA
+total_number_reads_0h_ip <- c(74606690,65858934)
+total_number_reads_4h_ip <- c(63084688,75080218)
+total_number_reads_12h_ip <- c(63731668,62110020)
+total_number_reads_0h_input <- c(65411554,59680388)
+total_number_reads_4h_input <- c(55155274,55244282)
+total_number_reads_12h_input <- c(55453230,61066238)
+
+# calculate the number of reads for a "standard" library
+standard_library_size <- exp(mean(log( c(total_number_reads_0h_ip,
+                                  total_number_reads_4h_ip,
+                                  total_number_reads_12h_ip,
+                                  total_number_reads_0h_input,
+                                  total_number_reads_4h_input,
+                                  total_number_reads_12h_input))))
+
+nf_spikein <- c(0.697398363,0.752975137,1.255850546,1.157329973,1.074906923,1.061539057)
+```
+
+## M3IN 0h 4h
+```{r gene featureCounts cpm}
+dir.create("05_m6A_peak_QNB")
+bam_dir <- "/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/"
+sample_name <- paste(rep(c("M3IN_0h","M3IN_4h","M3IN_12h"),each=4),
+                  rep(c("input","ip"),each=2,times=3),
+                  rep(c("rep1","rep2"),times=6),
+                 sep="_")
+
+bamfiles <- paste0(bam_dir,sample_name,".bam")
+
+total_Reads <- read.table("/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_num_summary.txt")$V1/2
+
+total_Reads <- total_Reads[c(1,2,7,8,3,4,9,10,5,6,11,12)]
+
+## M3IN_0h_4h
+M3IN_0h_4h_fc <- featureCounts(files=bamfiles[1:8],
+                               annot.ext = '/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/05_m6A_peak/04_bed_group_merge/M3IN_0h_M3IN_4h.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_0h_4h_counts <- M3IN_0h_4h_fc$counts[,1:8]
+colnames(M3IN_0h_4h_counts) <- sample_name[1:8]
+
+tt_wt(M3IN_0h_4h_counts,"05_m6A_peak_QNB/M3IN_0h_4h_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_0h_4h_counts)
+
+table(rowSums(M3IN_0h_4h_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_0h_4h_counts_filter <- M3IN_0h_4h_counts[rowSums(M3IN_0h_4h_counts>10)>=2,]
+M3IN_0h_4h_counts_filter <- M3IN_0h_4h_counts
+
+```
+
+```{r M3IN 0h 4h}
+M3IN_0h_ip_0h_4h_counts = M3IN_0h_4h_counts[,3:4]
+M3IN_0h_input_0h_4h_counts = M3IN_0h_4h_counts[,1:2]
+M3IN_4h_ip_0h_4h_counts = M3IN_0h_4h_counts[,7:8]
+M3IN_4h_input_0h_4h_counts = M3IN_0h_4h_counts[,5:6]
+
+head(M3IN_0h_ip_0h_4h_counts)
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_4h_ip*nf_spikein[3:4]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_4h_input/standard_library_size)
+
+dir.create("05_m6A_peak_QNB/M3IN_0h_4h")
+result_0h_4h = qnbtest(M3IN_0h_ip_0h_4h_counts, M3IN_4h_ip_0h_4h_counts, M3IN_0h_input_0h_4h_counts, M3IN_4h_input_0h_4h_counts, mode="per-condition",output.dir = "05_m6A_peak_QNB/M3IN_0h_4h",size.factor = size.factor.spikein)
+tt_wt(result_0h_4h,"05_m6A_peak_QNB/M3IN_0h_4h/result_0h_4h.txt",row.names = T,col.names = T)
+
+```
+
+## M3IN_0h_12h
+```{r gene featureCounts cpm}
+
+M3IN_0h_12h_fc <- featureCounts(files=bamfiles[c(1:4,9:12)],
+                               annot.ext = '/disk/user_09/Data/01_TC1/21_M3IN_ca_12h/05_m6A_peak/04_bed_group_merge/M3IN_0h_M3IN_12h.saf',
+                               isGTFAnnotationFile = F,
+                               allowMultiOverlap=FALSE,
+                            minOverlap = 30,
+                               minMQS = 20, strandSpecific=2,
+                               countMultiMappingReads=FALSE,
+                            fraction = FALSE,
+                               isPairedEnd=TRUE,nthreads=50)
+
+M3IN_0h_12h_counts <- M3IN_0h_12h_fc$counts
+colnames(M3IN_0h_12h_counts) <- sample_name[c(1:4,9:12)]
+
+tt_wt(M3IN_0h_12h_counts,"05_m6A_peak_QNB/M3IN_0h_12h_counts.txt",row.names = T,col.names = T)
+colSums(M3IN_0h_12h_counts)
+
+table(rowSums(M3IN_0h_12h_counts>10)>=2)
+# FALSE  TRUE 
+#     7 20380
+#M3IN_0h_12h_counts_filter <- M3IN_0h_12h_counts[rowSums(M3IN_0h_12h_counts>10)>=2,]
+M3IN_0h_12h_counts_filter <- M3IN_0h_12h_counts
+
+```
+
+```{r M3IN 0h 12h}
+
+M3IN_0h_ip_0h_12h_counts = M3IN_0h_12h_counts[,3:4]
+M3IN_0h_input_0h_12h_counts = M3IN_0h_12h_counts[,1:2]
+M3IN_12h_ip_0h_12h_counts = M3IN_0h_12h_counts[,7:8]
+M3IN_12h_input_0h_12h_counts = M3IN_0h_12h_counts[,5:6]
+
+# calculate the sample size factor based on the total number of reads
+size.factor.spikein <- list(control_ip=total_number_reads_0h_ip*nf_spikein[1:2]/standard_library_size,
+                    treated_ip=total_number_reads_12h_ip*nf_spikein[5:6]/standard_library_size,
+                   control_input=total_number_reads_0h_input/standard_library_size,
+                   treated_input=total_number_reads_12h_input/standard_library_size)
+
+dir.create("05_m6A_peak_QNB/M3IN_0h_12h")
+result_0h_12h = qnbtest(M3IN_0h_ip_0h_12h_counts, M3IN_12h_ip_0h_12h_counts, M3IN_0h_input_0h_12h_counts, M3IN_12h_input_0h_12h_counts, mode="per-condition",output.dir = "05_m6A_peak_QNB/M3IN_0h_12h",size.factor = size.factor.spikein)
+
+tt_wt(result_0h_12h,"05_m6A_peak_QNB/M3IN_0h_12h/result_0h_12h.txt",row.names = T,col.names = T)
+
+```
+
+```{r peak anno}
+
+txdb <- makeTxDbFromGFF('/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf')
+annoData <- toGRanges(txdb, format='gene')
+annoData[1:2]
+
+overlaps_P0 <- ol$peaklist[["P0"]]
+overlaps_P9 <- ol$peaklist[["P9"]]
+overlaps <- ol$peaklist[["P0///P9"]]
+
+binOverFeature(overlaps, annotationData=annoData,
+               radius=5000, nbins=50, FUN=length, errFun=0,
+               xlab="distance from TSS (bp)", ylab="count",
+               main="Distribution of aggregated peak numbers around TSS(M3IN_12h)")
+
+## check the genomic element distribution of the duplicates
+## the genomic element distribution will indicates the 
+## the correlation between duplicates.
+dir.create("05_annotation")
+pdf("05_annotation/01_peak_ElementDistribution_basic.pdf")
+peaks_sep <- GRangesList(P0_1=P0_1,
+                        P0_2=P0_2,
+                        P9_1=P9_1,
+                        P9_2=P9_2)
+genomicElementDistribution(peaks_sep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+
+peaks_rep <- GRangesList(P0=P0,
+                         P9=P9)
+genomicElementDistribution(peaks_rep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+pdf("05_annotation/01_peak_ElementDistribution_circle_basic.pdf")
+out_P0 <- genomicElementDistribution(peaks_rep$P0, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+
+out_P9 <- genomicElementDistribution(peaks_rep$P9, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+## check the genomic element distribution for the overlaps
+## the genomic element distribution will indicates the 
+## the best methods for annotation.
+## The percentages in the legend show the percentage of peaks in 
+## each category.
+
+
+# out_M3IN_12h <- genomicElementDistribution(overlaps_M3IN_12h, 
+#                                          TxDb = txdb,
+#                                          promoterRegion=c(upstream=2000, downstream=500),
+#                                          geneDownstream=c(upstream=0, downstream=5000),
+#                                          promoterLevel=list(
+#                                            # from 5' -> 3', fixed precedence 3' -> 5'
+#                                            breaks = c(-2000, -1000, -500, 0, 500),
+#                                            labels = c("upstream 1-2Kb", "upstream 0.5-1Kb", 
+#                                                       "upstream <500b", "TSS - 500b"),
+#                                            colors = c("#FFE5CC", "#FFCA99", 
+#                                                       "#FFAD65", "#FF8E32")))
+```

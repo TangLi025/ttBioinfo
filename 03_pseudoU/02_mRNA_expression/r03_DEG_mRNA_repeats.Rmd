@@ -1,0 +1,359 @@
+---
+title: "r01_DEG"
+author: "Tang Li"
+date: '2022-10-16'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(GEOquery)
+library(GenomicFeatures)
+library(BiocParallel)
+library(GenomicAlignments)
+library(rtracklayer)
+library(NMF)
+library(parallel)
+library(Rsubread)
+library(RUVSeq)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggprism)
+library(RColorBrewer)
+library(ttFunctions)
+library("ggrepel")
+library(ggthemes)
+library(ggsci)
+library(ggpubr)
+library(ComplexHeatmap)
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/09_PseudoU/04_aging_mRNA/06_repeats/")
+
+```
+
+## featurecount repeats
+
+```{r}
+
+#设置工作路径
+dir1='/disk/user_09/Data/09_PseudoU/04_aging_mRNA/03_hisat2_mapping/03_bam_merge/'
+sample_name1 <- paste(rep(c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"),each=2),
+                      rep(c("1","2"),times=10),
+                      sep = "_")
+
+fls <- file.path(dir1,paste0(sample_name1,'.bam'))
+file.exists(fls)
+
+# mm39
+# ~/reference/annotation/mm39/raw/gencode.vM29.annotation.gtf
+
+# hg38
+# /disk/user_09/reference/annotation/hg38/gencode.v40.annotation.gtf
+
+# saf格式：GeneID		Chr	Start	End	Strand
+```
+
+```{bash featureCounts repeats}
+# 由于结果文件过于巨大，只能用命令行运行
+conda activate subread
+featureCounts -a /disk/user_09/reference/annotation/hg38/repeats/saf/hg38_repeats_family.saf \
+-o hg38_repeats_family_fc_raw.txt \
+-F SAF -O --fracOverlap 0.2 -M -s 2 -T 50 -p \
+/disk/user_09/Data/09_PseudoU//04_aging_mRNA/03_hisat2_mapping/03_bam_merge/{"IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"}_{1,2}.bam \
+1> hg38_repeats_family_fc_raw.log 2>&1 &
+
+## 双端测序数据 -p
+featureCounts -a /disk/user_09/reference/annotation/hg38/repeats/saf/hg38_repeats_name.saf \
+-o hg38_repeats_name_fc_raw_s2.txt \
+-F SAF -O --fracOverlap 0.2 -M -s 2 -T 50 -p \
+/disk/user_09/Data/09_PseudoU//04_aging_mRNA/03_hisat2_mapping/03_bam_merge/{"IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"}_{1,2}.bam \
+1> hg38_repeats_name_fc_raw_s2.log 2>&1 &
+
+
+grep 'properly' {"IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"}_{1,2}.flagstat |cut -d ":" -f 2 | cut -d "+" -f 1 > flagstat_summary_num.txt
+
+
+```
+
+```{r cpm}
+fc_result <- fread("hg38_repeats_family_fc_raw.txt",header = T,nThread=40)
+fc_result <- as.data.frame(fc_result)
+rownames(fc_result) <- fc_result$Geneid
+fc_result <- fc_result[,c(7:26)]
+
+sample_name <- sample_name1
+colnames(fc_result) <- sample_name
+
+
+library_size <- read.table("/disk/user_09/Data/09_PseudoU/04_aging_mRNA/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary_num.txt")
+
+fc_cpm <- fc_result
+for (i in 1:dim(fc_result)[1]){
+  fc_cpm[i,] <- fc_result[i,]/library_size$V1*1000000
+}
+colSums(fc_cpm)
+fc_cpm <- fc_cpm[rowSums(fc_cpm)!=0,]
+
+# 
+tt_wt(fc_cpm,file.path("express_matrix_cpm.txt"),row.names = T,col.names = T) 
+```
+
+```{r}
+
+express_matrix <- fc_result[rowSums(fc_result)!=0,]
+colnames(express_matrix) <- sample_name
+meta_data <- data.frame(rep = rep(c("1","2"),times=10),
+                        stage = rep(c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"),each=2),
+                        row.names = sample_name,
+                        sample_name = sample_name,
+                        stringsAsFactors = TRUE)
+meta_data
+
+dds <- DESeqDataSetFromMatrix(countData = express_matrix,colData = meta_data,design = ~ stage)
+
+dir.create("04_DEG_result")
+dir.create("05_DEG_heatmap")
+dir.create("06_DEG_volcano")
+
+#DEG
+dds <- DESeq(dds)
+resultsNames(dds)
+
+sn <- c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1")
+
+
+res_IC_IR <- tt_DEG_result(dds,"IC","IR","04_DEG_result")
+res_P12_P16 <- tt_DEG_result(dds,"P12","P16","04_DEG_result")
+res_P13_shDKC1 <- tt_DEG_result(dds,"P13_shCtrl","P13_shDKC1","04_DEG_result/")
+
+
+res_IC_shDKC1 <- tt_DEG_result(dds,"IC_shCtrl","IC_shDKC1","04_DEG_result")
+res_IR_shDKC1 <- tt_DEG_result(dds,"IR_shCtrl","IR_shDKC1","04_DEG_result")
+res_IC_IR_shCtrl <- tt_DEG_result(dds,"IC_shCtrl","IR_shCtrl","04_DEG_result")
+
+res_IR_shDKC1_filter_1 <- tt_DEG_filter(res_IR_shDKC1,"IR_shCtrl","IR_shDKC1","04_DEG_result",lfcThreshold = 0.58)
+res_IC_IR_shCtrl_filter_1 <- tt_DEG_filter(res_IC_IR_shCtrl,"IC_shCtrl","IR_shCtrl","04_DEG_result",lfcThreshold = 0.58)
+
+
+
+```
+
+
+
+
+```{r heatmap library_size normalizition}
+dir.create("01_heatmap")
+pdf("01_heatmap/Heatmap_all.pdf",height = 10)
+heatmap <- Heatmap(matrix = t(scale(t(fc_cpm))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                row_km = 1,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap
+dev.off()
+
+```
+
+```{r barplot}
+
+barplot_repeats_cpm <- function(group_name,dir_path){
+  temp <- data.frame(group=factor(rep(c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"),each=2),
+                      levels=c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1")),
+                      cpm=as.numeric(fc_cpm[group_name,]))
+  # use a named vector with the group labels
+  p1 <- ggplot(temp, aes(x = group, y = cpm, fill=group)) +
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2)+ #绘制柱状图
+    stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=paste0("cpm of ",group_name))+#标题
+    theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+     #scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+    #ggtitle(expression(m^6*A~level~after~adding~STM2457))+
+    theme(plot.title = element_text(size=16,hjust = -0.5))+
+    #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+    #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+    scale_fill_prism(palette = "floral")+#使用ggprism包修改颜色
+    stat_compare_means(comparisons = list(c("IC","IR"),c("P12","P16"),c("IC_shCtrl","IC_shDKC1"),c("IR_shCtrl","IR_shDKC1"),c("P13_shCtrl","P13_shDKC1")),
+                       label = "p.format",
+                       method = "t.test",
+                       tip.length =c(0))
+  return(p1)
+}
+
+dir.create("01_barplot_library_size")
+pdf(file.path("01_barplot_library_size/",paste0("barplot.pdf")),width = 8,height = 6)
+for (i in rownames(fc_cpm)){
+  print(barplot_repeats_cpm(i,"01_barplot_library_size/"))
+}
+dev.off()
+
+
+```
+
+## col_sum
+
+```{r cpm}
+fc_result <- fread("hg38_repeats_family_fc_raw.txt",header = T,nThread=40)
+fc_result <- as.data.frame(fc_result)
+rownames(fc_result) <- fc_result$Geneid
+fc_result <- fc_result[,c(7:26)]
+
+sample_name <- sample_name1
+colnames(fc_result) <- sample_name
+
+
+library_size <- read.table("/disk/user_09/Data/09_PseudoU/04_aging_mRNA/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary_num.txt")
+
+fc_cpm <- fc_result
+for (i in 1:dim(fc_result)[1]){
+  fc_cpm[i,] <- fc_result[i,]/colSums(fc_result)*1000000
+}
+colSums(fc_cpm)
+fc_cpm <- fc_cpm[rowSums(fc_cpm)!=0,]
+
+# 
+tt_wt(fc_cpm,file.path("express_matrix_cpm_2.txt"),row.names = T,col.names = T) 
+```
+
+```{r heatmap colSum normalizition}
+dir.create("01_heatmap")
+pdf("01_heatmap/Heatmap_all_cpm.pdf",height = 10)
+heatmap <- Heatmap(matrix = t(scale(t(fc_cpm))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                row_km = 1,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap
+dev.off()
+
+```
+
+```{r barplot}
+
+barplot_repeats_cpm <- function(group_name,dir_path){
+  temp <- data.frame(group=factor(rep(c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"),each=2),
+                      levels=c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1")),
+                      cpm=as.numeric(fc_cpm[group_name,]))
+  # use a named vector with the group labels
+  p1 <- ggplot(temp, aes(x = group, y = cpm, fill=group)) +
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2)+ #绘制柱状图
+    stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=paste0("cpm of ",group_name))+#标题
+    theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+     #scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+    #ggtitle(expression(m^6*A~level~after~adding~STM2457))+
+    theme(plot.title = element_text(size=16,hjust = -0.5))+
+    #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+    #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+    scale_fill_prism(palette = "floral")+#使用ggprism包修改颜色
+    stat_compare_means(comparisons = list(c("IC","IR"),c("P12","P16"),c("IC_shCtrl","IC_shDKC1"),c("IR_shCtrl","IR_shDKC1"),c("P13_shCtrl","P13_shDKC1")),
+                       label = "p.format",
+                       method = "t.test",
+                       tip.length =c(0))
+  return(p1)
+}
+
+dir.create("01_barplot_library_size")
+pdf(file.path("01_barplot_library_size/",paste0("barplot_colSum.pdf")),width = 8,height = 6)
+for (i in rownames(fc_cpm)){
+  print(barplot_repeats_cpm(i,"01_barplot_library_size/"))
+}
+dev.off()
+
+
+```
+
+## repeats_name
+```{r cpm}
+fc_result <- fread("hg38_repeats_name_fc_raw.txt",header = T,nThread=40)
+fc_result <- as.data.frame(fc_result)
+rownames(fc_result) <- fc_result$Geneid
+fc_result <- fc_result[,c(7:26)]
+
+sample_name <- sample_name1
+colnames(fc_result) <- sample_name
+
+
+library_size <- read.table("/disk/user_09/Data/09_PseudoU/04_aging_mRNA/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary_num.txt")
+
+fc_cpm <- fc_result
+for (i in 1:dim(fc_result)[1]){
+  fc_cpm[i,] <- fc_result[i,]/library_size$V1*1000000
+}
+colSums(fc_cpm)
+fc_cpm <- fc_cpm[rowSums(fc_cpm)!=0,]
+
+# 
+tt_wt(fc_cpm,file.path("express_matrix_name_cpm.txt"),row.names = T,col.names = T) 
+```
+
+```{r heatmap library_size normalizition}
+dir.create("01_heatmap")
+pdf("01_heatmap/Heatmap_all.pdf",height = 10)
+heatmap <- Heatmap(matrix = t(scale(t(fc_cpm))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                row_km = 1,
+                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+heatmap
+dev.off()
+
+```
+
+```{r barplot}
+
+barplot_repeats_cpm <- function(group_name,dir_path){
+  temp <- data.frame(group=factor(rep(c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1"),each=2),
+                      levels=c("IC","IR","P12","P16","IC_shCtrl","IC_shDKC1","IR_shCtrl","IR_shDKC1","P13_shCtrl","P13_shDKC1")),
+                      cpm=as.numeric(fc_cpm[group_name,]))
+  # use a named vector with the group labels
+  p1 <- ggplot(temp, aes(x = group, y = cpm, fill=group)) +
+    geom_bar(stat = "summary",fun=mean,position="dodge",width =0.8,show.legend = F,size=2)+ #绘制柱状图
+    stat_summary(geom = "errorbar",fun.data = 'mean_sdl', width = 0.3,show.legend = F)+#误差棒
+    labs(x=NULL,y=paste0("cpm of ",group_name))+#标题
+    theme_prism(palette = "floral",
+                base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+                base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+                base_size = 16,  # 图形的字体大小
+                base_line_size = 0.8, # 坐标轴的粗细
+                axis_text_angle = 45)+ # 可选值有 0，45，90，270
+     #scale_fill_manual(values = c("0h" = "#DB5C25", "4h" = "#F3B747", "12h" = "#649541"))+
+    #ggtitle(expression(m^6*A~level~after~adding~STM2457))+
+    theme(plot.title = element_text(size=16,hjust = -0.5))+
+    #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+    #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+    scale_fill_prism(palette = "floral")+#使用ggprism包修改颜色
+    stat_compare_means(comparisons = list(c("IC","IR"),c("P12","P16"),c("IC_shCtrl","IC_shDKC1"),c("IR_shCtrl","IR_shDKC1"),c("P13_shCtrl","P13_shDKC1")),
+                       label = "p.format",
+                       method = "t.test",
+                       tip.length =c(0))
+  return(p1)
+}
+
+dir.create("01_barplot_library_size")
+pdf(file.path("01_barplot_library_size/",paste0("barplot.pdf")),width = 8,height = 6)
+for (i in rownames(fc_cpm)){
+  print(barplot_repeats_cpm(i,"01_barplot_library_size/"))
+}
+dev.off()
+
+
+```

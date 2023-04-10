@@ -1,0 +1,50 @@
+SAMPLE=["NET0_1","NET0_2","NET12_1","NET12_2","NETNC_1","NETNC_2","NETNU_1","NETNU_2","NETM3_1","NETM3_2","NETVI_1","NETVI_2"]
+
+THREADS = 10
+
+rule all:
+  input:
+    expand("03_hisat2_mapping/06_bw_SNR_strand/{sample}_fwd.bw",sample=SAMPLE),
+    expand("03_hisat2_mapping/06_bw_SNR_strand/{sample}_rev.bw",sample=SAMPLE)
+
+rule bamCoverage_fwd:
+  input:
+    "03_hisat2_mapping/04_bam_SNR_vs/{sample}_sorted.bam"
+  output:
+    bw="03_hisat2_mapping/06_bw_SNR_strand/{sample}_fwd.bw"
+  log:
+    "logs/03_hisat2_mapping/06_bw_SNR_strand/{sample}_fwd.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --filterRNAstrand reverse \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing CPM \
+      --exactScaling \
+      --binSize 2 \
+       > {log} 2>&1"
+
+rule bamCoverage_rev:
+  input:
+    "03_hisat2_mapping/04_bam_SNR_vs/{sample}_sorted.bam"
+  output:
+    bw="03_hisat2_mapping/06_bw_SNR_strand/{sample}_rev.bw"
+  log:
+    "logs/03_hisat2_mapping/06_bw_SNR_strand/{sample}_rev.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --filterRNAstrand forward \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing CPM \
+      --exactScaling \
+      --binSize 2 \
+       > {log} 2>&1"

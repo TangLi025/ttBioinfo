@@ -1,0 +1,68 @@
+GROUP=["P0","P9"]
+
+SAMPLE=["input","IP_1","IP_2","IP_3"]
+
+METHOD=["raw","dedup"]
+THREADS = 25
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_scatterplot.pdf",method=METHOD),
+    expand("04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_heatmap.pdf",method=METHOD)
+
+rule multiBamSummary:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{group}_{sample}.bam",method="{method}",group=GROUP,sample=SAMPLE)
+  output:
+    npz="04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.npz",
+    tab="04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.tab",
+    sf="04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.sf"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/multiBamSummary bins \
+      --bamfiles {input} \
+      -o {output.npz} \
+      --outRawCounts {output.tab} \
+      --scalingFactors {output.sf} \
+      --smartLabels \
+      --numberOfProcessors {threads} \
+      --binSize 10000 \
+       > {log} 2>&1"
+
+rule multiBamSummary_heatmap:
+  input:
+    "04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.npz"
+  output:
+    pdf="04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_heatmap.pdf"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_heatmap.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotCorrelation \
+       --corData {input} \
+       --corMethod pearson \
+       --whatToPlot heatmap \
+       --plotFile {output.pdf} \
+       --skipZeros \
+       --removeOutliers \
+       > {log} 2>&1"
+
+rule multiBamSummary_scatterplot:
+  input:
+    "04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary.npz"
+  output:
+    pdf="04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_scatterplot.pdf"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/03_bam_raw_multiBamSummary/multiBamSummary_scatterplot.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotCorrelation \
+       --corData {input} \
+       --corMethod pearson \
+       --whatToPlot scatterplot \
+       --plotFile {output.pdf} \
+       --skipZeros \
+       --removeOutliers \
+       > {log} 2>&1"

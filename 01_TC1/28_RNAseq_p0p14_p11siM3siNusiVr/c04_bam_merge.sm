@@ -1,13 +1,13 @@
-SAMPLE=["P8_Ctrl_Ctrl","P8_M3IN_Ctrl","P8_M3IN_At-c1","P8_M3IN_At-c2","P8_M3IN_CCCP-c1","P8_M3IN_CCCP-c2","P8_M3IN_CX-c1","P8_M3IN_CX-c2","P8_M3IN_Rbin-c1","P8_M3IN_Rbin-c2","P14_siNC-c1","P14_siNC-c2","P14_siNudt21-c1","P14_siNudt21-c2","P14_siM3-c1","P0_siNudt21_Ctrl","P0_siNudt21_dox","P2_siNudt21_Ctrl","P2_siNudt21_dox","P4_siNudt21_Ctrl","P4_siNudt21_dox","P5_siNudt21_Ctrl","P5_siNudt21_dox"]
+SAMPLE=["p0_1","p0_2","p14_1","p14_2","siNC_1","siNC_2","siMettl3_1","siMettl3_2","siNudt21_1","siNudt21_2","siVirma_1","siVirma_2"]
 
 STRAND=["pos","neg"]
 
-SAMTOOLS_THREADS=8
+SAMTOOLS_THREADS=4
 
 rule all:
   input:
     expand("03_hisat2_mapping/03_bam_merge/{sample}.bam.bai",sample=SAMPLE),
-    "03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary.txt"
+    "info/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary.txt"
     
 # 是否需要q20？
 rule bam_separate:
@@ -72,7 +72,7 @@ rule bam_merge_flagstat:
   input:
     "03_hisat2_mapping/03_bam_merge/{sample}.bam"
   output:
-    "03_hisat2_mapping/03_bam_merge/flagstat/{sample}.flagstat"
+    "info/03_hisat2_mapping/03_bam_merge/flagstat/{sample}.flagstat"
   log:
     "logs/03_hisat2_mapping/03_bam_merge/{sample}_flagstat.log"
   threads: 2
@@ -81,10 +81,10 @@ rule bam_merge_flagstat:
 
 rule bam_flagstat_summary:
   input:
-    expand("03_hisat2_mapping/03_bam_merge/flagstat/{sample}.flagstat",sample=SAMPLE)
+    expand("info/03_hisat2_mapping/03_bam_merge/flagstat/{sample}.flagstat",sample=SAMPLE)
   output:
-    "03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary_num.txt",
-    "03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary.txt"
+    "info/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary_num.txt",
+    "info/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary.txt"
   log:
     "logs/03_hisat2_mapping/03_bam_merge/flagstat/flagstat_summary.log"
   threads: 2

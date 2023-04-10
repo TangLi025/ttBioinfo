@@ -1,0 +1,74 @@
+GROUP=["P0","P9"]
+
+SAMPLE=["IP_1","IP_2"]
+
+METHOD=["raw","dedup"]
+THREADS = 50
+
+#APA_LOCI=["proximal","distal"]
+APA_LOCI=["distal"]
+APA_GROUP=["long","short","nc"]
+
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf"
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_100bp_2.png",method=METHOD,group=GROUP),
+    expand("04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_perGroup_100bp_2.png",method=METHOD,group=GROUP)
+
+rule computeMatrix_distribution:
+  input:
+    bw=expand("04_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{group}_{sample}.bw",method="{method}",group="{group}",sample=SAMPLE)
+  output:
+    mat="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.mat.gz",
+    tab="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.tab",
+    bed="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.bed"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.log"
+  params:
+    bed=expand("/disk/user_09/Data/01_TC1/25_siVirma_m6A/04_dapars/03_dapars2_20/proximal_distal_loci/{APA_loci}_loci_siNudt21_{APA_group}.bed",APA_loci=APA_LOCI,APA_group=APA_GROUP)
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/computeMatrix reference-point \
+      --regionsFileName {params.bed} \
+      --scoreFileName {input.bw} \
+      --outFileName {output.mat} \
+      --outFileNameMatrix {output.tab} \
+      --outFileSortedRegions {output.bed} \
+      --referencePoint center \
+      --beforeRegionStartLength 100  \
+      --afterRegionStartLength 100 \
+      --binSize 10 \
+      --skipZeros \
+      --numberOfProcessors {threads} \
+      --missingDataAsZero \
+       > {log} 2>&1"
+
+rule plotProfile:
+  input:
+    mat="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.mat.gz"
+  output:
+    png="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_100bp_2.png"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_100bp_2.log"
+  threads: 1
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotProfile \
+      --matrixFile {input.mat} \
+      --outFileName {output.png} \
+       > {log} 2>&1"
+
+rule plotProfile_perGroup:
+  input:
+    mat="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/computeMatrix_{group}_100bp_2.mat.gz"
+  output:
+    png="04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_perGroup_100bp_2.png"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/07_LACE_distribution_APA_loci/siNudt21/plotProfile_{group}_perGroup_100bp_2.log"
+  threads: 1
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotProfile \
+      --perGroup \
+      --matrixFile {input.mat} \
+      --outFileName {output.png} \
+       > {log} 2>&1"

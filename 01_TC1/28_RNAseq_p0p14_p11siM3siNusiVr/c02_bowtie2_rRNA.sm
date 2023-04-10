@@ -1,0 +1,31 @@
+SAMPLE=["p0_1","p0_2","p14_1","p14_2","siNC_1","siNC_2","siMettl3_1","siMettl3_2","siNudt21_1","siNudt21_2","siVirma_1","siVirma_2"]
+
+READ=["1","2"]
+
+INDEX_rRNA="/disk/user_09/reference/index/bowtie2/rRNA_mm39/rRNA"
+
+MAPPING_THREADS = 15
+
+rule all:
+  input:
+    expand("02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",sample=SAMPLE)
+    
+rule bowtie2_mapping:
+  input:
+    "01_trim_galore/{sample}_1_val_1.fq.gz",
+    "01_trim_galore/{sample}_2_val_2.fq.gz"
+  output:
+    R1="02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    R2="02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz",
+    summary="info/02_fastq_derRNA/01_bam_raw/{sample}.summary"
+  params:
+    index=INDEX_rRNA,
+    outname="02_fastq_derRNA/00_derRNA_fastq/{sample}_%.derRNA.fq.gz"    
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/bowtie2/bin/bowtie2 -x {params.index} \
+    --no-unal \
+    --un-conc-gz {params.outname} \
+    --threads {threads} -1 {input[0]} -2 {input[1]} 1> /dev/null 2> {output.summary} 
+    """

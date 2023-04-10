@@ -1,0 +1,95 @@
+SAMPLE=["NET0_1","NET0_2","NET12_1","NET12_2","NETNC_1","NETNC_2","NETNU_1","NETNU_2","NETM3_1","NETM3_2","NETVI_1","NETVI_2"]
+
+STRAND=["pos","neg"]
+
+SAMTOOLS_THREADS=4
+
+rule all:
+  input:
+    expand("03_hisat2_mapping/03_bam_merge_vs/{sample}.bam.bai",sample=SAMPLE),
+    "info/03_hisat2_mapping/03_bam_merge_vs/flagstat/flagstat_summary.txt"
+    
+# 是否需要q20？
+rule bam_separate:
+  input:
+    "03_hisat2_mapping/01_bam_raw_vs/{sample}.bam",
+    "03_hisat2_mapping/01_bam_raw_vs/{sample}.bam.bai"
+  output:
+    temp("03_hisat2_mapping/02_bam_separated_vs/{sample}_83.bam"),
+    temp("03_hisat2_mapping/02_bam_separated_vs/{sample}_163.bam"),
+    temp("03_hisat2_mapping/02_bam_separated_vs/{sample}_99.bam"),
+    temp("03_hisat2_mapping/02_bam_separated_vs/{sample}_147.bam"),
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_pos.bam",
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_neg.bam"
+  threads: SAMTOOLS_THREADS
+  shell:
+    """
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -q 20 -b -f 83 {input[0]} 1> {output[0]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -q 20 -b -f 163 {input[0]} 1> {output[1]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -q 20 -b -f 99 {input[0]} 1> {output[2]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -q 20 -b -f 147 {input[0]} 1> {output[3]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools merge -@ {threads} {output[4]} {output[0]} {output[1]} 
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools merge -@ {threads} {output[5]} {output[2]} {output[3]}
+  	"""
+    
+rule bam_separated_index:
+  input:
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_{strand}.bam"
+  output:
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_{strand}.bam.bai"
+  log:
+    "logs/03_hisat2_mapping/02_bam_separated_vs/bam_{strand}_index_{sample}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} > {log} 2>&1"
+
+rule bam_merge:
+  input:
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_pos.bam",
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_pos.bam.bai",
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_neg.bam",
+    "03_hisat2_mapping/02_bam_separated_vs/{sample}_neg.bam.bai"
+  output:
+    "03_hisat2_mapping/03_bam_merge_vs/{sample}.bam"
+  log:
+    "logs/03_hisat2_mapping/03_bam_merge_vs/{sample}.log"
+  threads: SAMTOOLS_THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools merge -f -@ {threads} {output} {input[0]} {input[2]} > {log} 2>&1"
+
+rule bam_merge_index:
+  input:
+    "03_hisat2_mapping/03_bam_merge_vs/{sample}.bam"
+  output:
+    "03_hisat2_mapping/03_bam_merge_vs/{sample}.bam.bai"
+  log:
+    "logs/03_hisat2_mapping/03_bam_merge_vs/{sample}_index.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} > {log} 2>&1"
+
+rule bam_merge_flagstat:
+  input:
+    "03_hisat2_mapping/03_bam_merge_vs/{sample}.bam"
+  output:
+    "info/03_hisat2_mapping/03_bam_merge_vs/flagstat/{sample}.flagstat"
+  log:
+    "logs/03_hisat2_mapping/03_bam_merge_vs/{sample}_flagstat.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} > {output} 2>{log}"
+
+rule bam_flagstat_summary:
+  input:
+    expand("info/03_hisat2_mapping/03_bam_merge_vs/flagstat/{sample}.flagstat",sample=SAMPLE)
+  output:
+    "info/03_hisat2_mapping/03_bam_merge_vs/flagstat/flagstat_summary_num.txt",
+    "info/03_hisat2_mapping/03_bam_merge_vs/flagstat/flagstat_summary.txt"
+  log:
+    "logs/03_hisat2_mapping/03_bam_merge_vs/flagstat/flagstat_summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input}   > {output[1]}
+    """

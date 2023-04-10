@@ -1,0 +1,76 @@
+GROUP=["P0","P9"]
+
+SAMPLE=["input","IP_1","IP_2"]
+
+IP=["IP_1","IP_2"]
+
+METHOD=["dedup"]
+THREADS = 50
+
+M6A_GROUP=["siNC","siM3","siNudt21"]
+
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf"
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}_250bp.pdf",method=METHOD,group=GROUP),
+    expand("04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}_perGroup_250bp.pdf",method=METHOD,group=GROUP)
+
+rule computeMatrix_distribution:
+  input:
+    bw=expand("04_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{group}_{sample}.bw",method="{method}",group="{group}",sample=SAMPLE)
+  output:
+    mat="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.mat.gz",
+    tab="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.tab",
+    bed="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.bed"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.log"
+  params:
+    bed=expand("/disk/user_09/Data/01_TC1/26_LACE_seq_Nudt21/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{group}_{ip}_peaks.bed",group='{group}',ip=IP)
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/computeMatrix reference-point \
+      --regionsFileName {params.bed} \
+      --scoreFileName {input.bw} \
+      --outFileName {output.mat} \
+      --outFileNameMatrix {output.tab} \
+      --outFileSortedRegions {output.bed} \
+      --referencePoint center \
+      --beforeRegionStartLength 250  \
+      --afterRegionStartLength 250 \
+      --binSize 10 \
+      --skipZeros \
+      --numberOfProcessors {threads} \
+      --missingDataAsZero \
+       > {log} 2>&1"
+
+rule plotHeatmap:
+  input:
+    mat="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.mat.gz"
+  output:
+    pdf="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}_250bp.pdf"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}.log"
+  threads: 1
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotHeatmap \
+      --matrixFile {input.mat} \
+      --outFileName {output.pdf} \
+      --colorMap Blues \
+       > {log} 2>&1"
+
+rule plotHeatmap_perGroup:
+  input:
+    mat="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/computeMatrix_{group}_250bp.mat.gz"
+  output:
+    pdf="04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}_perGroup_250bp.pdf"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/10_LACE_peak_LACE_signal/plotHeatmap_{group}_perGroup.log"
+  threads: 1
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotHeatmap \
+      --perGroup \
+      --matrixFile {input.mat} \
+      --outFileName {output.pdf} \
+      --colorMap Blues \
+       > {log} 2>&1"

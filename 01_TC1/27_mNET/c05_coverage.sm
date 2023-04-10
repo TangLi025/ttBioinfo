@@ -1,0 +1,27 @@
+SAMPLE=["NET0_1","NET0_2","NET12_1","NET12_2","NETNC_1","NETNC_2","NETNU_1","NETNU_2","NETM3_1","NETM3_2","NETVI_1","NETVI_2"]
+
+THREADS = 10
+
+rule all:
+  input:
+    expand("03_hisat2_mapping/05_bw_SNR_vs/{sample}.bw",sample=SAMPLE)
+
+rule bamCoverage:
+  input:
+    "03_hisat2_mapping/04_bam_SNR_vs/{sample}_sorted.bam"
+  output:
+    bw="03_hisat2_mapping/05_bw_SNR_vs/{sample}.bw"
+  log:
+    "logs/03_hisat2_mapping/05_bw_SNR_vs/{sample}.log"
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/bamCoverage \
+      -b {input} \
+      --outFileName {output.bw} \
+      --outFileFormat bigwig \
+      --numberOfProcessors {threads} \
+      --effectiveGenomeSize 2494787188 \
+      --normalizeUsing CPM \
+      --exactScaling \
+      --binSize 1 \
+       > {log} 2>&1"

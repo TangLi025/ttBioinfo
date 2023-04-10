@@ -1,0 +1,73 @@
+SAMPLE=["P0","P9"]
+
+IP=["IP_1","IP_2","IP_3"]
+
+GENOME="/disk/user_09/reference/genome/mm/GRCm39.genome.fa"
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf"
+
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/01_motif/{sample}_{ip}/homerResults.html",sample=SAMPLE,ip=IP),
+    expand("04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/03_bed_slop/slop30/01_motif/{sample}_{ip}/homerResults.html",sample=SAMPLE,ip=IP),
+    expand("04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/02_annotation/{sample}_{ip}_peaks_annotation.txt",sample=SAMPLE,ip=IP)
+
+rule find_motif:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/{sample}_{ip}_peaks.bed"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/01_motif/{sample}_{ip}/homerResults.html"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/01_motif/{sample}_{ip}_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/01_motif/{sample}_{ip}"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """
+
+rule find_motif_slop:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/03_bed_slop/slop30/{sample}_{ip}_peaks.bed"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/03_bed_slop/slop30/01_motif/{sample}_{ip}/homerResults.html"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/03_bed_slop/slop30/01_motif/{sample}_{ip}_find_motif.log"
+  threads:1
+  params:
+    genome=GENOME,
+    out_dir="04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/03_bed_slop/slop30/01_motif/{sample}_{ip}"
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/findMotifsGenome.pl {input} \
+    {params.genome} {params.out_dir} \
+    -rna -p {threads} -len 5,6,7 > {log} 2>&1
+    """
+
+rule peak_annotation_homer:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/{sample}_{ip}_peaks.bed"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/02_annotation/{sample}_{ip}_peaks_annotation.txt"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/02_bed_modify/02_annotation/{sample}_{ip}_peaks_annotation.log"
+  params:
+    genome=GENOME,
+    gtf=GTF
+  threads:2
+  shell:
+    """
+    cat {input[0]} \
+      | awk -F "\t" -v OFS="\t" '{{$5=".";print $4,$1,$2,$3,$6,$5}}' \
+      | /disk/user_09/anaconda3/envs/m6A/bin/annotatePeaks.pl - \
+      {params.genome} \
+      -gtf {params.gtf} \
+      -cpu {threads} \
+      1> {output} 2> {log}
+    """
+
+

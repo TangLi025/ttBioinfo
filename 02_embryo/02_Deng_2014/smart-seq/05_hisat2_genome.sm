@@ -1,0 +1,69 @@
+SAMPLE=["D_Zygote","D_early2cell","D_mid2cell","D_late2cell","D_4cell","D_8cell","D_16cell","D_earlyblast","D_midblast","D_lateblast"]
+
+D_Zygote=[i for i in range(1,5)]
+D_early2cell=[i for i in range(1,9)]
+D_mid2cell=[i for i in range(1,13)]
+D_late2cell=[i for i in range(1,11)]
+D_4cell=[i for i in range(1,15)]
+D_8cell=[i for i in range(1,29)]
+D_16cell=[i for i in range(1,51)]
+D_earlyblast=[i for i in range(1,44)]
+D_midblast=[i for i in range(1,61)]
+D_lateblast=[i for i in range(1,31)]
+
+INDEX="/disk/user_09/reference/index/hisat2/mm39_ss_exon/mm39_ss_exon"
+
+MAPPING_THREADS = 15
+
+# 根据样本命名修改sample、rep等
+rule all:
+  input:
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[0],rep=D_Zygote),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[1],rep=D_early2cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[2],rep=D_mid2cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[3],rep=D_late2cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[4],rep=D_4cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[5],rep=D_8cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[6],rep=D_16cell),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[7],rep=D_earlyblast),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[8],rep=D_midblast),
+    expand("04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai", sample=SAMPLE[9],rep=D_lateblast)
+
+
+# 注意链特异性类型 
+# --rna-strandness RF （R2为forward，有义链）
+# 如果比对率不高，可以尝试 --very-sensitive
+rule hisat2_mapping:
+  input:
+    "03_fastq_derRNA/00_fastq_derRNA/{sample}_{rep}.derRNA.fq.gz"
+  output:
+    bam="04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam",
+    summary="info/04_hisat2_mapping/01_bam_raw/{sample}_{rep}.summary.txt",
+    R1="04_hisat2_mapping/00_unMap/{sample}_{rep}.fq.gz"
+  params:
+    index=INDEX,
+    outname="04_hisat2_mapping/00_unMap/{sample}_{rep}.fq.gz"
+  log:
+    "logs/04_hisat2_mapping/01_bam_raw/{sample}_{rep}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/hisat2 -x {params.index} \
+    --un-gz {params.outname} \
+    --summary-file {output.summary} \
+    -p {threads} -U {input[0]} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bam_index:
+  input:
+    "04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam"
+  output:
+    "04_hisat2_mapping/01_bam_raw/{sample}_{rep}.bam.bai"
+  log:
+    "logs/04_hisat2_mapping/01_bam_raw_index/{sample}_{rep}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"

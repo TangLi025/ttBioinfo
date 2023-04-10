@@ -1,7 +1,7 @@
 ---
-title: "r01_DEG_mRNA_p14_siNudt21_siM3"
+title: "r01_DEG_mRNA"
 author: "Tang Li"
-date: '2023-2-13'
+date: '2022-10-16'
 output: html_document
 ---
 
@@ -32,59 +32,113 @@ library(sva)
 library(venn)
 options(stringsAsFactors = FALSE)
 library(ggrepel)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(clusterProfiler)
 library(org.Mm.eg.db)
+library(org.Hs.eg.db)
 library(biomaRt)
 library(enrichplot)
 library(patchwork)
 
-# ~/Data/01_TC1/01_mRNA_expression/04_p14_siNudt21_siM3/04_p14_siNudt21_siM3.Rproj
-
+# ~/Data/01_TC1/01_mRNA_expression/15_p0p14_siNuM3Vi/
+work_dir <- "~/Data/01_TC1/01_mRNA_expression/15_p0p14_siNuM3Vi/"
 require("knitr")
-opts_knit$set(root.dir = file.path("~/Data/01_TC1/01_mRNA_expression/04_p14_siNudt21_siM3/"))
+opts_knit$set(root.dir = file.path(work_dir))
 
 ```
 
-```{r filt genes with duplicated gene name}
-fc_result_count <- read.table("../01_p0p5p10rp2/01_featureCounts/express_matrix_count_rowname_modified.txt")
-fc_result_annotation <- read.table("../01_p0p5p10rp2/01_featureCounts/express_matrix_annotation_rowname_modified.txt")
+```{r 设置工作路径}
+#设置工作路径
+dir='/disk/user_09/Data/01_TC1/28_RNAseq_p0p10_p11siM3siNusiVr/03_hisat2_mapping/03_bam_merge/'
 
+sample_name <- paste(rep(c("p0","p14","siNC","siMettl3","siNudt21","siVirma"),each=2),
+                     rep(c(1,2),times=6),
+                      sep = "_")
+
+fls <- file.path(dir,paste0(sample_name,'.bam'))
+file.exists(fls)
+fls
+```
+
+## featurecount
+
+```{bash}
+
+cd /disk/user_09/Data/01_TC1/28_RNAseq_p0p10_p11siM3siNusiVr/03_hisat2_mapping/03_bam_merge/
+
+file_dir=/disk/user_09/Data/01_TC1/28_RNAseq_p0p10_p11siM3siNusiVr/03_hisat2_mapping/03_bam_merge/
+file_pre=("p0" "p14" "siNC" "siMettl3" "siNudt21" "siVirma")
+
+file=""
+for i in ${file_pre[@]}
+do
+for j in {1,2}
+do
+  file="$file ${file_dir}${i}_${j}.bam"
+done
+done
+
+conda activate subread
+
+featureCounts -a /disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf \
+  -o fc_gencode.basic.pc.txt \
+  -F GTF -t exon -g 'gene_id' --extraAttributes 'gene_name','gene_type' \
+  --fracOverlap 30 -s 2 -p -T 50 \
+  $file 1> fc_genecode.basic.pc.log 2>&1
+```
+
+```{r featurecount_result}
+fc_exon <- as.data.frame(fread("01_raw_fc/fc_gencode.basic.pc.txt"))
+rownames(fc_exon) <- fc_exon$Geneid
+
+table(is.na(fc_exon))
+
+fc_exon_count <- fc_exon[,9:20]
+colnames(fc_exon_count) <- sample_name
+
+fc_exon_annotation <- fc_exon[,c(1,6:8)]
+
+tt_wt(fc_exon_count,file.path("01_raw_fc/express_matrix_raw.txt"),col.names = T,row.names = T) 
+tt_wt(fc_exon_annotation,file.path("01_raw_fc/annotation_raw.txt"),col.names = T,row.names = F) 
+```
+
+```{r gene filter & get expression matrix}
+
+table(duplicated(fc_exon_annotation$gene_name))
+
+fc_exon_annotation <- fc_exon_annotation[order(fc_exon_annotation$Geneid),]
+fc_exon_annotation_rmdup <- fc_exon_annotation[!duplicated(fc_exon_annotation$gene_name),]
+fc_exon_count_rmdup <- fc_exon_count[rownames(fc_exon_annotation_rmdup),]
+
+rownames(fc_exon_count_rmdup) <- fc_exon_annotation_rmdup$gene_name
+rownames(fc_exon_annotation_rmdup) <- fc_exon_annotation_rmdup$gene_name
+
+tt_wt(fc_exon_count_rmdup,"01_raw_fc/fc_exon_count_rmdup.txt",row.names = T,col.names = T)
+
+tt_wt(fc_exon_annotation_rmdup,"01_raw_fc/fc_exon_annotation_rmdup.txt",row.names = T,col.names = T)
 
 ```
 
-```{r marker genes}
-marker_all <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/all")$V1
-marker_toti <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/toti")$V1
-marker_pluri <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/pluri")$V1
-marker_TE_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/TE_TSC")$V1
-marker_TSC <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/TSC")$V1
-marker_PrE_XEN <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/PrE_XEN")$V1
-marker_APA <- read.table("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/APA")$V1
-marker_APAperturb <- read.table("~/Data/01_TC1/00_gene_set/all/APA_perturb")$V1
+### DEG for input samples
 
-table(marker_all %in% rownames(fc_result_count))
-marker_all[!marker_all %in% rownames(fc_result_count)]
-marker_all <- marker_all[marker_all %in% rownames(fc_result_count)]
-
-```
-
-```{r betweenLaneNormalization & expression filter10}
-
-sample_name <- c("siNC","siNudt21","siM3")
-colnames(fc_result_count)
-express_matrix <- fc_result_count[,27:29]
-colnames(express_matrix) <- sample_name
-meta_data <- data.frame(rep = rep(c("rep1"),times=3),
-                        stage = c("siNC","siNudt21","siM3"),
-                        row.names = sample_name,
-                        sample_name = sample_name,
+```{r betweenLaneNormalization}
+set_matrix_DEG <- fc_exon_count_rmdup[,5:12]
+sample_name1 <- sample_name[5:12]
+meta_data <- data.frame(rep = rep(c("1","2"),times=4),
+                        stage = rep(c("siNC","siMettl3","siNudt21","siVirma"),each=2),
+                        row.names = sample_name1,
+                        sample_name = sample_name1,
                         stringsAsFactors = TRUE)
 meta_data
 
+
+# batch <- c(rep("p0p14",4),rep("si",8))
+# set_matrix_sva <- ComBat_seq(as.matrix(set_matrix_DEG),batch)
 x <- meta_data$stage
-set <- newSeqExpressionSet(as.matrix(express_matrix),
-                           phenoData = data.frame(x, row.names=colnames(express_matrix)))
+set <- newSeqExpressionSet(as.matrix(set_matrix_DEG),
+                           phenoData = data.frame(x, row.names=colnames(set_matrix_DEG)))
 set
+
 
 colors <- brewer.pal(18, "Paired")
 plotRLE(set, outline=FALSE, ylim=c(-2, 2), col=colors[x])
@@ -96,23 +150,25 @@ plotPCA(set, col=colors[x], cex=1.2)
 
 express_matrix <- set@assayData$normalizedCounts
 
-dir.create("02_express_matrix")
-tt_wt(express_matrix,"02_express_matrix/express_matrix.txt",row.names=T,col.names = T)
-# 对表达量进行筛选
-filter <- (express_matrix[,1]>=10 | express_matrix[,2]>=10) | (express_matrix[,1]>=10 | express_matrix[,3]>=10)
-table(filter)
-express_matrix_filter5 <- express_matrix[filter,]
 
-colnames(express_matrix_filter10)
-tt_wt(express_matrix_filter10,"02_express_matrix/express_matrix_filter10.txt",row.names=T,col.names = T)
+
+tt_wt(express_matrix,"express_matrix.txt",row.names=T,col.names = T)
+# 对表达量进行筛选
+filter <- rowSums(express_matrix>=10)>=2
+table(filter)
+express_matrix_filter <- express_matrix[filter,]
+
+colnames(express_matrix_filter)
+tt_wt(express_matrix_filter,"express_matrix_filter10.txt",row.names=T,col.names = T)
 ```
+
 
 ```{r get tpm_matrix}
 #convert to TPM
 
 tpm_matrix <- do.call(cbind,base::lapply(colnames(express_matrix),FUN = function(x){
   counts <- express_matrix[,x]
-  effLen <- fc_result_annotation[rownames(express_matrix),"Length"]
+  effLen <- fc_exon_annotation_rmdup[rownames(express_matrix),"Length"]
   rate <- log(counts) - log(effLen)
   denom <- log(sum(exp(rate)))
   return(exp(rate-denom+log(1e6)))
@@ -122,17 +178,246 @@ rownames(tpm_matrix) <- rownames(express_matrix)
 colnames(tpm_matrix) <- colnames(express_matrix)
 table(colSums(tpm_matrix))
 
-write.table(tpm_matrix,file="02_express_matrix/tpm_matrix.txt",quote = F,sep = "\t")
+write.table(tpm_matrix,file="tpm_matrix.txt",quote = F,sep = "\t")
+```
+
+## DESeq2
+```{r create dds object and plot pca}
+
+dir.create("01_pca")
+
+meta_data 
+dds <- DESeqDataSetFromMatrix(countData = express_matrix_filter,colData = meta_data,design = ~ stage)
+
+#pca plot
+
+rlog <- rlog(dds,blind = FALSE)
+
+pcaData <- plotPCA(rlog,intgroup = c("stage"),returnData = TRUE,ntop=500)
+pcaData
+percentVar <- round(100 * attr(pcaData,"percentVar"))
+percentVar
+
+p1 <- ggplot(pcaData,aes(x = PC1, y = PC2, color=stage)) +
+  geom_point(size=3) +
+  geom_label(aes(label=stage,vjust=1))+
+  xlab(paste0("PC1:",percentVar[1],"% variance")) +
+  ylab(paste0("PC2:",percentVar[2],"% variance")) +
+  xlim(-5,7.5)+
+  ylim(-5,6)+
+  coord_fixed(ratio=percentVar[2]/percentVar[1]) +
+  ggtitle("PCA plot mRNA rlog")+
+  theme_bw()+
+  scale_color_prism(palette = "floral")
+  #scale_color_manual(values = c("M3IN_0h" = "#facf87", "M3IN_4h" = "#d1d1ed", "M3IN_12h" = "#b9dbf4"))
+
+
+pdf("01_pca/01_pca_rlog_gencode_basic_pc.pdf",width = 6,height = 5)
+print(p1)
+dev.off()
+
+vst <- vst(dds,blind =FALSE)
+
+pcaData <- plotPCA(vst,intgroup = c("stage"),returnData = TRUE,ntop=500)
+pcaData
+percentVar <- round(100 * attr(pcaData,"percentVar"))
+percentVar
+
+p1 <- ggplot(pcaData,aes(x = PC1, y = PC2, color=stage)) +
+  geom_point(size=3) +
+  geom_label(aes(label=stage,vjust=1))+
+  xlab(paste0("PC1:",percentVar[1],"% variance")) +
+  ylab(paste0("PC2:",percentVar[2],"% variance")) +
+  #xlim(-20,17)+
+  #ylim(-15,14)+
+  coord_fixed(ratio=percentVar[2]/percentVar[1]) +
+  ggtitle("PCA plot mRNA vst")+
+  theme_bw()+
+  scale_color_prism(palette = "floral")
+  #scale_color_manual(values = c("M3IN_0h" = "#facf87", "M3IN_4h" = "#d1d1ed", "M3IN_12h" = "#b9dbf4"))
+
+
+pdf("01_pca/01_pca_vst_gencode_pc.pdf",width = 6,height = 5)
+print(p1)
+dev.off()
+```
+
+```{r DEG analysis}
+dir.create("02_DEG_result")
+dir.create("03_DEG_heatmap")
+dir.create("04_DEG_volcano")
+
+#DEG
+dds <- DESeq(dds)
+resultsNames(dds)
+
+sn <- c("siNC","siMettl3","siNudt21","siVirma")
+
+res_siNC_siMettl3 <- tt_DEG_result(dds,"siNC","siMettl3",save_dir = "02_DEG_result/")
+res_siNC_siVirma <- tt_DEG_result(dds,"siNC","siVirma",save_dir = "02_DEG_result/")
+res_siNC_siNudt21 <- tt_DEG_result(dds,"siNC","siNudt21",save_dir = "02_DEG_result/")
+
+res_siVirma_siMettl3 <- tt_DEG_result(dds,"siVirma","siMettl3",save_dir = "02_DEG_result/")
+res_siVirma_siNudt21 <- tt_DEG_result(dds,"siVirma","siNudt21",save_dir = "02_DEG_result/")
+
+res_siMettl3_siNudt21 <- tt_DEG_result(dds,"siMettl3","siNudt21",save_dir = "02_DEG_result/")
+
+
+
+```
+
+## filter1
+```{r DEG result filter1}
+#filter1
+#### 
+dir.create("02_DEG_result/filter1")
+res_siNC_siMettl3_filter_1 <- tt_DEG_filter(res_siNC_siMettl3,"siNC","siMettl3",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+res_siNC_siVirma_filter_1 <- tt_DEG_filter(res_siNC_siVirma,"siNC","siVirma",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+res_siNC_siNudt21_filter_1 <- tt_DEG_filter(res_siNC_siNudt21,"siNC","siNudt21",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+
+res_siVirma_siMettl3_filter_1 <- tt_DEG_filter(res_siVirma_siMettl3,"siVirma","siMettl3",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+res_siVirma_siNudt21_filter_1 <- tt_DEG_filter(res_siVirma_siNudt21,"siVirma","siNudt21",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+
+res_siMettl3_siNudt21_filter_1 <- tt_DEG_filter(res_siMettl3_siNudt21,"siMettl3","siNudt21",lfcThreshold = 1,save_dir = "02_DEG_result/filter1")
+
+```
+
+```{r DEG heatmap filter1}
+
+dir.create("03_DEG_heatmap/filter1")
+
+DEG_heatmap <- function(g1,g2){
+  tt_DEG_heatmap(get(paste("res",g1,g2,"filter_1",sep="_")),g1,g2,tpm_matrix,meta_data,lfcThreshold = 1,save_dir = "03_DEG_heatmap")
+}
+
+DEG_heatmap("siNC","siMettl3")
+DEG_heatmap("siNC","siNudt21")
+DEG_heatmap("siNC","siVirma")
+DEG_heatmap("siVirma","siMettl3")
+DEG_heatmap("siVirma","siNudt21")
+DEG_heatmap("siMettl3","siNudt21")
+
+```
+
+```{r DEG volcano filter1}
+DEG_volcano <- function(g1,g2){
+  tt_DEG_volcano(get(paste("res",g1,g2,sep="_")),g1,g2,lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100",save_dir = "04_DEG_volcano/")
+}
+
+sn <- c("siNC","siVirma","siMettl3","siNudt21")
+
+
+for (g1 in 1:(length(sn)-1)){
+  for (g2 in (g1+1):length(sn)){
+    DEG_volcano(sn[g1],sn[g2])
+  }
+}
+
+```
+
+```{r DEG GO KEGG}
+
+dir.create("05_DEG_GO")
+
+for (i in sn){
+  for (j in sn){
+    if (exists(paste0("res_",i,"_",j,"_filter_1"))){
+      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange>0],groupname = paste0("res_",i,"_",j,"_filter_1_up"),filedir = "05_DEG_GO/")
+      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange<0],groupname = paste0("res_",i,"_",j,"_filter_1_down"),filedir = "05_DEG_GO/")
+    }
+  }
+}
+
+```
+
+## filter0.58
+```{r DEG result filter0.58}
+#filter0.58
+#### 
+
+DEG_result_filter <- function(g1,g2,threshold){
+  assign(paste("res",g1,g2,"filter",threshold,sep = "_"),tt_DEG_filter(get(paste("res",g1,g2,sep="_")),g1,g2,lfcThreshold = threshold,save_dir = "02_DEG_result"))
+  return(get(paste("res",g1,g2,"filter",threshold,sep = "_")))
+}
+
+threshold = 0.58
+for (g1 in sn){
+  for (g2 in sn){
+    if (exists(paste0("res_",g1,"_",g2))){
+    assign(paste("res",g1,g2,"filter",threshold,sep = "_"),DEG_result_filter(g1,g2,threshold = threshold))
+    }
+  }
+}
+
+```
+
+```{r DEG heatmap}
+
+DEG_heatmap <- function(g1,g2,threshold){
+  tt_DEG_heatmap(get(paste("res",g1,g2,"filter",threshold,sep="_")),g1,g2,tpm_matrix,meta_data,lfcThreshold = threshold,save_dir = "03_DEG_heatmap")
+}
+
+for (g1 in sn){
+  for (g2 in sn){
+    if (exists(paste0("res_",g1,"_",g2))){
+      DEG_heatmap(g1,g2,threshold = threshold)
+    }
+  }
+}
+
+```
+
+```{r DEG volcano filter1}
+DEG_volcano <- function(g1,g2,threshold){
+  tt_DEG_volcano(get(paste("res",g1,g2,sep="_")),g1,g2,lfcThreshold =threshold,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100",save_dir = "04_DEG_volcano/")
+}
+
+for (g1 in sn){
+  for (g2 in sn){
+    if (exists(paste0("res_",g1,"_",g2))){
+      DEG_volcano(g1,g2,threshold)
+    }
+  }
+}
+
+```
+
+```{r DEG GO KEGG}
+
+for (i in sn){
+  for (j in sn){
+    if (exists(paste0("res_",i,"_",j))){
+      res_filter_name <- paste("res",i,j,"filter",threshold,sep = "_")
+      tt_enrichGO(genelist = rownames(get(res_filter_name))[get(res_filter_name)$log2FoldChange>0],groupname = paste(res_filter_name,"up",sep = "_"),filedir = paste("05_DEG_GO/filter",threshold,sep = "_"))
+      tt_enrichGO(genelist = rownames(get(res_filter_name))[get(res_filter_name)$log2FoldChange<0],groupname = paste(res_filter_name,"down",sep = "_"),filedir = paste("05_DEG_GO/filter",threshold,sep = "_"))
+    }
+  }
+}
+
+```
+
+
+```{r marker genes}
+
+marker_group <- c("toti","pluri","TE","TSC","PrE_XEN","APA","APA_perturb")
+for (i in marker_group){
+  assign(paste("marker",i,sep = "_"),
+         read.table(paste0("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/",i))$V1)
+  assign(paste("marker",i,sep = "_"),get(paste("marker",i,sep = "_"))[get(paste("marker",i,sep = "_")) %in% rownames(tpm_matrix)])
+}
+
 ```
 
 ```{r marker barplot}
 dir.create("08_marker")
 
+stages <- meta_data$stage
+
 tt_barplot <- function(gene_name){
-  temp <- data.frame(group=factor(c("siNC","siNudt21","siM3"),levels = c("siNC","siNudt21","siM3")),
+  temp <- data.frame(group=factor(stages, levels=c("siNC","siMettl3","siNudt21","siVirma"),ordered = T),
                    tpm=tpm_matrix[gene_name,])
-  p1 <- ggplot(temp, aes(x = group, y = tpm)) +
-  geom_col(position="dodge",width =0.8,show.legend = F,size=2)+ #绘制柱状图
+  p1 <- ggplot(temp, aes(x = group, y = tpm, fill=group)) +
+  geom_col(position="dodge",width =0.8,show.legend = F,size=2,fill="#DB5C25")+ #绘制柱状图
   geom_point(show.legend = F,position = position_jitter(width = 0.1))+
   labs(x=NULL,y=paste0(gene_name," tpm"))+#标题
   theme_prism(palette = "floral",
@@ -142,549 +427,56 @@ tt_barplot <- function(gene_name){
               base_line_size = 0.8, # 坐标轴的粗细
               axis_text_angle = 45)+ # 可选值有 0，45，90，270
   theme(plot.title = element_text(size=16,hjust = -0.5))
-  scale_color_manual(values = c("siNC" = "#c6a46b", "siNudt21" = "#a4a4ba", "siM3" = "#92adc1"))
+  #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
   #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
   #scale_fill_prism(palette = "floral")#使用ggprism包修改颜色
   print(p1)
 }
 
-dir.create("08_marker")
-pdf("08_marker/01_APA_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_APA[marker_APA %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-tt_barplot("Gapdh")
-tt_barplot("Actb")
-dev.off()
-
-pdf("08_marker/01_toti_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_toti[marker_toti %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-dev.off()
-
-pdf("08_marker/01_pluri_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_pluri[marker_pluri %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-dev.off()
-
-pdf("08_marker/01_TE_TSC_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_TE_TSC[marker_TE_TSC %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-dev.off()
-
-pdf("08_marker/01_TSC_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_TSC[marker_TSC %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-dev.off()
-
-
-pdf("08_marker/01_PrE_XEN_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_PrE_XEN[marker_PrE_XEN %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-dev.off()
-
-pdf("08_marker/01_APAperturb_barplot.pdf",width = 3.5,height = 4)
-for (i in marker_APAperturb[marker_APAperturb %in% rownames(tpm_matrix)]){
-  tt_barplot(i)
-}
-tt_barplot("Gapdh")
-tt_barplot("Actb")
-dev.off()
-```
-
-## EdgeR
-
-```{r create dds object}
-
-dir.create("04_DEG_result")
-dir.create("05_DEG_heatmap")
-dir.create("06_DEG_volcano")
-dir.create("07_DEG_GO")
-
-```
-
-```{r gsea siNudt21}
-DEG_log <- tpm_matrix
-
-DEG_log <- DEG_log[rowSums(DEG_log>0.5)>=2,]
-
-DEG_log <- transform(DEG_log,
-                     siNC_siNudt21=log2(siNudt21+1)-log2(siNC+1),
-                     siNC_siM3=log2(siM3+1)-log2(siNC+1))
-
-dir.create("08_marker_gsea")
-
-## ribosome
-Ribosome_genes <- read.table("../../00_gene_set/CC_Ribosome")
-
-msigdb <- data.frame(term=rep("Ribosome",length(Ribosome_genes)),
-                     gene=Ribosome_genes)
-
-pdf("08_marker_gsea/gsea_ribosome_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- DEG_log$siNC_siNudt21
-
-names(res_siNC_siNudt21_1_list) <- rownames(DEG_log)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## ribosome_biogenesis
-ribosome_biogenesis_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/ribosome_biogenesis")$V1
-
-msigdb <- data.frame(term=c(rep("ribosome_biogenesis",length(ribosome_biogenesis_genes))),
-                     gene=c(ribosome_biogenesis_genes))
-
-
-pdf("08_marker_gsea/gsea_ribosome_biogenesis_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- DEG_log$siNC_siNudt21
-
-names(res_siNC_siNudt21_1_list) <- rownames(DEG_log)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## mito
-mitochondrial_protein_containing_complex_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrial_protein_containing_complex")$V1
-
-mitochondrion_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrion_organization")$V1
-
-msigdb <- data.frame(term=c(rep("mitochondrial_protein_complex",length(mitochondrial_protein_containing_complex_genes)),
-                            rep("mitochondrion_organization",length(mitochondrion_organization_genes))),
-                     gene=c(mitochondrial_protein_containing_complex_genes,mitochondrion_organization_genes))
-
-
-pdf("08_marker_gsea/gsea_mitochondrion_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- DEG_log$siNC_siNudt21
-
-names(res_siNC_siNudt21_1_list) <- rownames(DEG_log)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## extracellular 
-extracellular_matrix_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix_organization")$V1
-
-extracellular_matrix_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix")$V1
-
-msigdb <- data.frame(term=c(rep("extracellular_matrix_organization",length(extracellular_matrix_organization_genes)),
-                            rep("extracellular_matrix",length(extracellular_matrix_genes))),
-                     gene=c(extracellular_matrix_organization_genes,extracellular_matrix_genes))
-
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- DEG_log$siNC_siNudt21
-
-names(res_siNC_siNudt21_1_list) <- rownames(DEG_log)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1:2,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-extracellular_matrix_intersect_genes <- intersect(extracellular_matrix_genes,extracellular_matrix_organization_genes)
-
-msigdb <- data.frame(term=c(rep("extracellular_matrix_intersect",length(extracellular_matrix_intersect_genes))),
-                     gene=c(extracellular_matrix_intersect_genes))
-
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_intersect_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- DEG_log$siNC_siNudt21
-
-names(res_siNC_siNudt21_1_list) <- rownames(DEG_log)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-```
-
-```{r gsea siM3}
-
-## ribosome
-Ribosome_genes <- read.table("../../00_gene_set/CC_Ribosome")
-
-msigdb <- data.frame(term=rep("Ribosome",length(Ribosome_genes)),
-                     gene=Ribosome_genes)
-
-pdf("08_marker_gsea/gsea_ribosome_siM3.pdf",width = 5)
-res_siNC_siM3_1_list <- DEG_log$siNC_siM3
-
-names(res_siNC_siM3_1_list) <- rownames(DEG_log)
-
-res_siNC_siM3_1_list <- sort(res_siNC_siM3_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siM3_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siM3_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## ribosome_biogenesis
-ribosome_biogenesis_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/ribosome_biogenesis")$V1
-
-msigdb <- data.frame(term=c(rep("ribosome_biogenesis",length(ribosome_biogenesis_genes))),
-                     gene=c(ribosome_biogenesis_genes))
-
-
-pdf("08_marker_gsea/gsea_ribosome_biogenesis_siM3.pdf",width = 5)
-res_siNC_siM3_1_list <- DEG_log$siNC_siM3
-
-names(res_siNC_siM3_1_list) <- rownames(DEG_log)
-
-res_siNC_siM3_1_list <- sort(res_siNC_siM3_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siM3_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siM3_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## mito
-mitochondrial_protein_containing_complex_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrial_protein_containing_complex")$V1
-
-mitochondrion_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrion_organization")$V1
-
-msigdb <- data.frame(term=c(rep("mitochondrial_protein_complex",length(mitochondrial_protein_containing_complex_genes)),
-                            rep("mitochondrion_organization",length(mitochondrion_organization_genes))),
-                     gene=c(mitochondrial_protein_containing_complex_genes,mitochondrion_organization_genes))
-
-
-pdf("08_marker_gsea/gsea_mitochondrion_siM3.pdf",width = 5)
-res_siNC_siM3_1_list <- DEG_log$siNC_siM3
-
-names(res_siNC_siM3_1_list) <- rownames(DEG_log)
-
-res_siNC_siM3_1_list <- sort(res_siNC_siM3_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siM3_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siM3_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## extracellular 
-extracellular_matrix_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix_organization")$V1
-
-extracellular_matrix_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix")$V1
-
-msigdb <- data.frame(term=c(rep("extracellular_matrix_organization",length(extracellular_matrix_organization_genes)),
-                            rep("extracellular_matrix",length(extracellular_matrix_genes))),
-                     gene=c(extracellular_matrix_organization_genes,extracellular_matrix_genes))
-
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_siM3.pdf",width = 5)
-res_siNC_siM3_1_list <- DEG_log$siNC_siM3
-
-names(res_siNC_siM3_1_list) <- rownames(DEG_log)
-
-res_siNC_siM3_1_list <- sort(res_siNC_siM3_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siM3_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1:2,
-          title="siNC_siM3_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-extracellular_matrix_intersect_genes <- intersect(extracellular_matrix_genes,extracellular_matrix_organization_genes)
-
-msigdb <- data.frame(term=c(rep("extracellular_matrix_intersect",length(extracellular_matrix_intersect_genes))),
-                     gene=c(extracellular_matrix_intersect_genes))
-
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_intersect_siM3.pdf",width = 5)
-res_siNC_siM3_1_list <- DEG_log$siNC_siM3
-
-names(res_siNC_siM3_1_list) <- rownames(DEG_log)
-
-res_siNC_siM3_1_list <- sort(res_siNC_siM3_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siM3_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siM3_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-```
-
-```{r DEG analysis}
-
-
-
-meta_data 
-colnames(express_matrix)
-
-dds <- DESeqDataSetFromMatrix(countData = express_matrix_filter10,colData = meta_data,design = ~ stage)
-
-#pca plot
-
-rlog <- rlog(dds,blind = T)
-
-expression_rlog <- as.data.frame(rlog@assays@data@listData)
-
-expression_rlog <- transform(expression_rlog,siNC_siNudt21=siNudt21-siNC,
-                             siNC_siMettl3=siM3-siNC)
-
-tpm_filter10 <- tpm_matrix[rownames(tpm_matrix) %in% rownames(express_matrix_filter10),]
-
-tpm_filter10 <- transform(tpm_filter10,
-                          log2FC_siNudt21=log2((siNudt21+1)/(siNC+1)),
-                          log2FC_siMettl3=log2((siM3+1)/(siNC+1)))
-
-tt_wt(tpm_filter10,"02_express_matrix/tpm_filter10_log2FC.txt",col.names = T,row.names = T)
-
-
-DEG_siNC_siNudt21_up_gene <- rownames(tpm_matrix[(tpm_matrix[,2] >1.0 | tpm_matrix[,1] >1.0) & log2((tpm_matrix[,2]+0.001)/(tpm_matrix[,1]+0.001))>=1.6,])
-DEG_siNC_siNudt21_down_gene <- rownames(tpm_matrix[(tpm_matrix[,2] >1.0 | tpm_matrix[,1] >1.0) & log2((tpm_matrix[,2]+0.001)/(tpm_matrix[,1]+0.001))< -1.6,])
-
-DEG_siNC_siM3_up_gene <- rownames(tpm_matrix[(tpm_matrix[,3] >1.0 | tpm_matrix[,1] >1.0) & log2((tpm_matrix[,3]+0.001)/(tpm_matrix[,1]+0.001))>=1.6,])
-DEG_siNC_siM3_down_gene <- rownames(tpm_matrix[(tpm_matrix[,3] >1.0 | tpm_matrix[,1] >1.0) & log2((tpm_matrix[,3]+0.001)/(tpm_matrix[,1]+0.001))< -1.6,])
-
-for (i in c("siNudt21","siM3")){
-  for (j in c("up","down")){
-    tt_wt(get(paste("DEG","siNC",i,j,"gene",sep = "_")),paste("04_DEG_result/DEG","siNC",i,j,"gene",sep = "_"))
+for (i in marker_group){
+  pdf(paste("08_marker/01",i,"barplot.pdf",sep = "_"),width = 3.5,height = 4)
+  for (j in get(paste0("marker_",i))){
+    tt_barplot(j)
   }
+  dev.off()
 }
 
-dir.create("07_DEG_GO/siNudt21_siM3_tpm1")
-for (i in c("siNudt21","siM3")){
-  for (j in c("up","down")){
-    tt_enrichGO(get(paste("DEG","siNC",i,j,"gene",sep = "_")),"07_DEG_GO/siNudt21_siM3_tpm1/",groupname = paste("DEG","siNC",i,j,"gene",sep = "_"),OrgDb = org.Mm.eg.db)
-  }
-}
-
-selected_genes <- c(DEG_siNC_siNudt21_up_gene,DEG_siNC_siNudt21_down_gene,DEG_siNC_siM3_up_gene,DEG_siNC_siM3_down_gene)
-selected_genes <- selected_genes[!duplicated(selected_genes)]
-temp <- tpm_matrix[rownames(tpm_matrix) %in% selected_genes,]
-temp <- t(scale(t(temp)))
-
-heatmap <- Heatmap(matrix = temp,name="z-score",
-                                show_column_names = TRUE,show_row_names=F,
-                                cluster_rows = TRUE,cluster_columns = F,
-                                width = unit(4,'inches'),
-                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
-
-pdf(paste0("05_DEG_heatmap/01_siNudt21_siM3.pdf"))
-heatmap <- draw(heatmap)
-dev.off()
-
-heatmap <- Heatmap(matrix = temp,name="z-score",
-                                show_column_names = TRUE,show_row_names=F,
-                                cluster_rows = TRUE,cluster_columns = F,
-                                width = unit(4,'inches'),
-                   row_km = 9,row_km_repeats = 1000,
-                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
-
-pdf(paste0("05_DEG_heatmap/01_siNudt21_siM3_km9.pdf"))
-heatmap <- draw(heatmap)
-dev.off()
-
-heatmap <- Heatmap(matrix = temp,name="z-score",
-                                show_column_names = TRUE,show_row_names=F,
-                                cluster_rows = TRUE,cluster_columns = F,
-                                width = unit(4,'inches'),
-                   row_km = 6,row_km_repeats = 1000,
-                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
-
-pdf(paste0("05_DEG_heatmap/01_siNudt21_siM3_km6.pdf"))
-heatmap <- draw(heatmap)
-dev.off()
-
-heatmap_row_cluster1 <- rownames(temp)[row_order(heatmap)$`1`]
-heatmap_row_cluster2 <- rownames(temp)[row_order(heatmap)$`2`]
-heatmap_row_cluster3 <- rownames(temp)[row_order(heatmap)$`3`]
-heatmap_row_cluster4 <- rownames(temp)[row_order(heatmap)$`4`]
-heatmap_row_cluster5 <- rownames(temp)[row_order(heatmap)$`5`]
-heatmap_row_cluster6 <- rownames(temp)[row_order(heatmap)$`6`]
-# heatmap_row_cluster7 <- rownames(temp)[row_order(heatmap)$`7`]
-# heatmap_row_cluster8 <- rownames(temp)[row_order(heatmap)$`8`]
-# heatmap_row_cluster9 <- rownames(temp)[row_order(heatmap)$`9`]
-
-dir.create("07_DEG_GO/siNudt21_siM3_tpm1/km6")
-for (i in 1:6){
-  tt_enrichGO(get(paste0("heatmap_row_cluster",i)),"07_DEG_GO/siNudt21_siM3_tpm1/km6/",groupname = paste0("siNudt21_siM3_tpm1_km6_cluster",i),OrgDb = org.Mm.eg.db)
-}
 
 ```
 
-## filter1
-```{r DEG result filter1}
-#filter1
-
-res_siNC_siNudt21_1_filter_1 <- tt_DEG_filter(res_siNC_siNudt21_1,"siNC","siNudt21_1","04_DEG_result",lfcThreshold = 1)
-res_siNC_siNudt21_3_filter_1 <- tt_DEG_filter(res_siNC_siNudt21_3,"siNC","siNudt21_3","04_DEG_result",lfcThreshold = 1)
+```{r marker heatmap}
 
 ```
 
-```{r DEG heatmap filter1}
+```{r embryo tpm}
+venn(list(rownames(embryo_percent),rownames(tpm_matrix_mean)))
 
-tt_DEG_heatmap(res_siNC_siNudt21_1_filter_1,"siNC","siNudt21_1",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1)
-tt_DEG_heatmap(res_siNC_siNudt21_3_filter_1,"siNC","siNudt21_3",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1)
+tpm_matrix_mean_f <- tpm_matrix_mean[intersect(rownames(embryo_percent),rownames(tpm_matrix_mean))]
 
-### cluster col
-tt_DEG_heatmap(res_siNC_siNudt21_1_filter_1,"siNC","siNudt21_1",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1,cluster_columns = T,name_suffix = "_cluster_col")
-tt_DEG_heatmap(res_siNC_siNudt21_3_filter_1,"siNC","siNudt21_3",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 1,cluster_columns = T,name_suffix = "_cluster_col")
 
 ```
-
-```{r DEG volcano filter1}
-tt_DEG_volcano(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
-tt_DEG_volcano(res_siNC_siNudt21_3,"siNC","siNudt21_3","06_DEG_volcano/",lfcThreshold =1,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
-
-tt_DEG_volcano_mark(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
-
-tt_DEG_volcano_mark(res_siNC_siNudt21_3,"siNC","siNudt21_3","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
-
-tt_DEG_volcano_mark(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =1,label_genes=marker_toti,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_toti")
-```
-
-```{r DEG GO KEGG filter1}
-
-dir.create("07_DEG_GO")
-
-sn <- c("siNC","siNudt21_1","siNudt21_3")
-for (i in sn[1]){
-  for (j in sn[2:3]){
-    if (exists(paste0("res_",i,"_",j,"_filter_1"))){
-      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange>0],groupname = paste0("res_",i,"_",j,"_filter_1_up"),filedir = "07_DEG_GO/")
-      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_1")))[get(paste0("res_",i,"_",j,"_filter_1"))$log2FoldChange<0],groupname = paste0("res_",i,"_",j,"_filter_1_down"),filedir = "07_DEG_GO/")
-    }
-  }
-}
-
-```
-
-## filter058
-```{r DEG result filter058}
-
-res_siNC_siNudt21_1_filter_058 <- tt_DEG_filter(res_siNC_siNudt21_1,"siNC","siNudt21_1","04_DEG_result",lfcThreshold = 0.58)
-
-```
-
-```{r DEG heatmap filter058}
-
-tt_DEG_heatmap(res_siNC_siNudt21_1_filter_058,"siNC","siNudt21_1",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 0.58)
-
-### cluster col
-tt_DEG_heatmap(res_siNC_siNudt21_1_filter_058,"siNC","siNudt21_1",tpm_matrix,meta_data,save_dir = "05_DEG_heatmap/",lfcThreshold = 0.58,cluster_columns = T,name_suffix = "_cluster_col")
-
-```
-
-```{r DEG volcano filter058}
-tt_DEG_volcano(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =0.58,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_padj100")
-
-tt_DEG_volcano_mark(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =0.58,label_genes=marker_APA,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_APA")
-
-tt_DEG_volcano_mark(res_siNC_siNudt21_1,"siNC","siNudt21_1","06_DEG_volcano/",lfcThreshold =0.58,label_genes=marker_toti,pdf_width = 8,pdf_height = 6,padj_limit = 100,name_suffix = "_mark_toti")
-```
-
-```{r DEG GO KEGG filter058}
-
-for (i in sn[1]){
-  for (j in sn[2]){
-    if (exists(paste0("res_",i,"_",j,"_filter_058"))){
-      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_058")))[get(paste0("res_",i,"_",j,"_filter_058"))$log2FoldChange>0],groupname = paste0("res_",i,"_",j,"_filter_058_up"),filedir = "07_DEG_GO/")
-      tt_enrichGO(genelist = rownames(get(paste0("res_",i,"_",j,"_filter_058")))[get(paste0("res_",i,"_",j,"_filter_058"))$log2FoldChange<0],groupname = paste0("res_",i,"_",j,"_filter_058_down"),filedir = "07_DEG_GO/")
-    }
-  }
-}
-
-```
-
-
 
 ```{r marker_heatmap}
+
+for (i in marker_group){
+  heatmap <- Heatmap(matrix = t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% get(paste0("marker_",i)),1:6]))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = T,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("08_marker/02_heatmap_cluster_col_",i,"_M3Nu.pdf"),height = 12)
+heatmap <- draw(heatmap)
+dev.off()
+
+}
+
 group <- c("toti","pluri","XEN","TE","2cell_1","2cell_2","4cell","morula","ICM_EPI")
 
 for (i in group){
-  heatmap <- Heatmap(matrix = t(scale(t(tpm_DEG_mean[rownames(tpm_DEG_mean) %in% get(paste0("genes_",i)),]))),name="z-score",
+  heatmap <- Heatmap(matrix = t(scale(t(tpm_matrix_mean[rownames(tpm_matrix_mean) %in% get(paste0("genes_",i)),]))),name="z-score",
                                 show_column_names = TRUE,show_row_names=T,
                                 cluster_rows = TRUE,cluster_columns = T,
                                 width = unit(4,'inches'),
@@ -698,7 +490,7 @@ dev.off()
 
 }
 
-heatmap <- Heatmap(matrix = t(scale(t(tpm_DEG_mean[c(genes_2cell_1,genes_2cell_2,genes_4cell,genes_morula,genes_ICM_EPI),]))),name="z-score",
+heatmap <- Heatmap(matrix = t(scale(t(tpm_matrix_mean[c(genes_2cell_1,genes_2cell_2,genes_4cell,genes_morula,genes_ICM_EPI),]))),name="z-score",
                                 show_column_names = TRUE,show_row_names=T,
                                 cluster_rows =T,cluster_columns = T,
                                 width = unit(4,'inches'),
@@ -713,7 +505,7 @@ dev.off()
 dir.create("07_marker/marker_all_km")
 
 for (i in 1:20){
-  heatmap <- Heatmap(matrix = t(scale(t(tpm_DEG_mean[genes_marker,]))),name="z-score",
+  heatmap <- Heatmap(matrix = t(scale(t(tpm_matrix_mean[genes_marker,]))),name="z-score",
                                 show_column_names = TRUE,show_row_names=T,
                                 cluster_rows =T,cluster_columns = T,
                                 width = unit(4,'inches'),
@@ -729,10 +521,10 @@ dev.off()
 
 ```
 
-```{r p10 cluster}
-dir.create("06_diff_p10")
+```{r siNC cluster}
+dir.create("06_diff_siNC")
 
-diff_geneset_filter1 <- c(rownames(res_p10_siNC_filter_1),
+diff_geneset_filter1 <- c(rownames(res_p10_p0_filter_1),
                               rownames(res_p10_rp2_filter_1),
                               rownames(res_p10_M3IN_filter_1),
                               rownames(res_p10_siM3_filter_1),
@@ -740,13 +532,13 @@ diff_geneset_filter1 <- c(rownames(res_p10_siNC_filter_1),
                               rownames(res_p10_siNudt21_filter_1),
                               rownames(res_p10_XEN_filter_1),
                               rownames(res_p10_TSC_filter_1),
-                              rownames(res_siNC_M3IN_filter_1),
-rownames(res_siNC_siM3_filter_1),
-rownames(res_siNC_siVirma_filter_1),
-rownames(res_siNC_siNudt21_filter_1),
-rownames(res_siNC_rp2_filter_1),
-rownames(res_siNC_TSC_filter_1),
-rownames(res_siNC_XEN_filter_1),
+                              rownames(res_p0_M3IN_filter_1),
+rownames(res_p0_siM3_filter_1),
+rownames(res_p0_siVirma_filter_1),
+rownames(res_p0_siNudt21_filter_1),
+rownames(res_p0_rp2_filter_1),
+rownames(res_p0_TSC_filter_1),
+rownames(res_p0_XEN_filter_1),
 rownames(res_XEN_M3IN_filter_1),
 rownames(res_XEN_siM3_filter_1),
 rownames(res_XEN_siVirma_filter_1),
@@ -770,7 +562,7 @@ rownames(res_siVirma_siNudt21_filter_1),
 rownames(res_siM3_siNudt21_filter_1))
 
 diff_geneset_filter1 <- diff_geneset_filter1[!duplicated(diff_geneset_filter1)]
-tpm_diff_p10 <- tpm_DEG_mean[diff_geneset_p10_filter1,]
+tpm_diff_p10 <- tpm_matrix_mean[diff_geneset_p10_filter1,]
 
 venn(list(rownames(tpm_diff_p10),
           c(read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder1_genes.txt")$V1,
@@ -882,16 +674,16 @@ for (i in 1:4){
 ```{r p10 cluster M3IN}
 dir.create("06_diff_p10_M3IN")
 
-diff_geneset_filter1 <- c(rownames(res_p10_siNC_filter_1),
+diff_geneset_filter1 <- c(rownames(res_p10_p0_filter_1),
                               rownames(res_p10_rp2_filter_1),
                               rownames(res_p10_M3IN_filter_1),
                               rownames(res_p10_siNudt21_filter_1),
                               rownames(res_p10_XEN_filter_1),
                               rownames(res_p10_TSC_filter_1),
-                              rownames(res_siNC_M3IN_filter_1),
-rownames(res_siNC_siNudt21_filter_1),
-rownames(res_siNC_rp2_filter_1),
-rownames(res_siNC_TSC_filter_1),
+                              rownames(res_p0_M3IN_filter_1),
+rownames(res_p0_siNudt21_filter_1),
+rownames(res_p0_rp2_filter_1),
+rownames(res_p0_TSC_filter_1),
 rownames(res_p0_XEN_filter_1),
 rownames(res_XEN_M3IN_filter_1),
 rownames(res_XEN_siNudt21_filter_1),
@@ -905,7 +697,7 @@ rownames(res_rp2_siNudt21_filter_1),
 rownames(res_M3IN_siNudt21_filter_1))
 
 diff_geneset_filter1 <- diff_geneset_filter1[!duplicated(diff_geneset_filter1)]
-tpm_diff_p10_M3IN <- tpm_DEG_mean[diff_geneset_p10_filter1,c(1,2,5:9)]
+tpm_diff_p10_M3IN <- tpm_matrix_mean[diff_geneset_p10_filter1,c(1,2,5:9)]
 
 set.seed(1000)
 

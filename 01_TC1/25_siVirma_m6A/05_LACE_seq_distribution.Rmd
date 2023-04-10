@@ -1,0 +1,90 @@
+---
+title: "05_LACE-seq_distribution"
+author: "Tang Li"
+date: '2023-03-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(VennDiagram)
+library(ttFunctions)
+
+require("knitr")
+opts_knit$set(root.dir = file.path("~/Data/01_TC1/25_siVirma_m6A/05_LACE_seq_distridution/"))
+```
+
+```{r dapars result coverage20 loci_bed}
+
+dapars2_P14_P21 <- as_tibble(read.table("../04_dapars/03_dapars2_20/DaPars2_P14_P21.txt",header = TRUE))
+
+dapars2_P14_P21 <- mutate(dapars2_P14_P21,
+                          strand=sapply(strsplit(Gene,"|",fixed = T),"[",4),
+                          transcript_id=sapply(strsplit(Gene,"|",fixed = T),"[",1),
+                          gene_name=sapply(strsplit(Gene,"|",fixed = T),"[",2),
+                          chr=sapply(strsplit(Gene,"|",fixed = T),"[",3))
+
+dapars2_P14_P21 <- mutate(dapars2_P14_P21,
+                          UTR_start=sapply(strsplit(sapply(strsplit(Loci,":",fixed = T),"[",2),"-",fixed = T),"[",1),
+                          UTR_end=sapply(strsplit(sapply(strsplit(Loci,":",fixed = T),"[",2),"-",fixed = T),"[",2))
+
+proximal_loci_bed <- tibble(chr=dapars2_P14_P21$chr,
+                            start=dapars2_P14_P21$Predicted_Proximal_APA-100,
+                            end=dapars2_P14_P21$Predicted_Proximal_APA+100,
+                            name=dapars2_P14_P21$gene_name,
+                            score=".",
+                            strand=dapars2_P14_P21$strand)
+
+distal_loci_bed <- tibble(chr=dapars2_P14_P21$chr,
+                            start=as.numeric(ifelse(dapars2_P14_P21$strand=="+",dapars2_P14_P21$UTR_end,dapars2_P14_P21$UTR_start))-100,
+                            end=as.numeric(ifelse(dapars2_P14_P21$strand=="+",dapars2_P14_P21$UTR_end,dapars2_P14_P21$UTR_start))+100,
+                            name=dapars2_P14_P21$gene_name,
+                            score=".",
+                            strand=dapars2_P14_P21$strand)
+
+dir.create("../04_dapars/03_dapars2_20/proximal_distal_loci")
+tt_wt(proximal_loci_bed,"../04_dapars/03_dapars2_20/proximal_distal_loci/proximal_loci.bed")
+tt_wt(distal_loci_bed,"../04_dapars/03_dapars2_20/proximal_distal_loci/distal_loci.bed")
+
+```
+
+```{r target gene}
+dapars2_siNudt21 <- read.table("../04_dapars/03_dapars2_20/01_P14_0.2_0.58_mean/DaPars2_P14_siNCP14_siNudt21.txt",header = T)
+dapars2_siNudt21 <- mutate(dapars2_siNudt21,gene_name=sapply(strsplit(Gene,"|",fixed = T),"[",2))
+
+dapars2_siMettl3 <- read.table("../04_dapars/03_dapars2_20/01_P14_0.2_0.58_mean/DaPars2_P14_siNCP14_siMettl3.txt",header = T)
+dapars2_siMettl3 <- mutate(dapars2_siMettl3,gene_name=sapply(strsplit(Gene,"|",fixed = T),"[",2))
+
+## 分别取long=DOWN、short=UP、nc=NC，以及从不变中随机抽取与变长的数量一样的组
+proximal_loci_siNudt21_long <- subset(proximal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="DOWN","gene_name"]))
+proximal_loci_siNudt21_short <- subset(proximal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="UP","gene_name"]))
+proximal_loci_siNudt21_nc <- subset(proximal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="NC","gene_name"]))
+proximal_loci_siNudt21_nc_sample <- proximal_loci_bed[sample(1:nrow(proximal_loci_siNudt21_nc), nrow(proximal_loci_siNudt21_long), replace=FALSE),]
+
+distal_loci_siNudt21_long <- subset(distal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="DOWN","gene_name"]))
+distal_loci_siNudt21_short <- subset(distal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="UP","gene_name"]))
+distal_loci_siNudt21_nc <- subset(distal_loci_bed,subset = (name %in% dapars2_siNudt21[dapars2_siNudt21$filter=="NC","gene_name"]))
+distal_loci_siNudt21_nc_sample <- distal_loci_bed[sample(1:nrow(distal_loci_siNudt21_nc), nrow(distal_loci_siNudt21_long), replace=FALSE),] 
+
+proximal_loci_siMettl3_long <- subset(proximal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="DOWN","gene_name"]))
+proximal_loci_siMettl3_short <- subset(proximal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="UP","gene_name"]))
+proximal_loci_siMettl3_nc <- subset(proximal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="NC","gene_name"]))
+proximal_loci_siMettl3_nc_sample <- proximal_loci_bed[sample(1:nrow(proximal_loci_siMettl3_nc), nrow(proximal_loci_siMettl3_long), replace=FALSE),] 
+
+distal_loci_siMettl3_long <- subset(distal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="DOWN","gene_name"]))
+distal_loci_siMettl3_short <- subset(distal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="UP","gene_name"]))
+distal_loci_siMettl3_nc <- subset(distal_loci_bed,subset = (name %in% dapars2_siMettl3[dapars2_siMettl3$filter=="NC","gene_name"]))
+distal_loci_siMettl3_nc_sample <- distal_loci_bed[sample(1:nrow(distal_loci_siMettl3_nc), nrow(distal_loci_siMettl3_long), replace=FALSE),] 
+
+for (k in c("proximal_loci","distal_loci")){
+  for (i in c("siNudt21","siMettl3")){
+  for (j in c("long","short","nc","nc_sample")){
+    tt_wt(get(paste(k,i,j,sep="_")),paste0("../04_dapars/03_dapars2_20/proximal_distal_loci/",paste(k,i,j,sep="_"),".bed"))
+  }
+}
+}
+
+```

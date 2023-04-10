@@ -1,0 +1,7 @@
+new
+genome [your_genome_name]
+load [your_annotation_file]
+maxPanelHeight 1000
+snapshotDirectory [your_snapshot_directory]
+goto [gene_name]
+snapshot [gene_name].png

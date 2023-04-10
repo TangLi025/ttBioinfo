@@ -16,15 +16,17 @@ library(stringr)
 library(venn)
 library(ttFunctions)
 
+library(ComplexHeatmap)
+
 require(knitr)
-opts_knit$set(root.dir = "~/Data/02_embryo/01_mouse_embryo_scRNA-seq_2014_Ding/")
+opts_knit$set(root.dir = "~/Data/02_embryo/01_mouse_embryo_scRNA-seq_2014_Deng/")
 
 ```
 
 ```{r}
-file_list <- list.files("01_expression/")[c(277:280,114:121,205:216,165:174,51:64,65:92,1:50,122:164,217:276,175:204)]
+file_list <- list.files("00_expression/01_raw_expression/")[c(277:280,114:121,205:216,165:174,51:64,65:92,1:50,122:164,217:276,175:204)]
 
-temp <- read.table("01_expression/GSM1112490_16cell_1-10_expression.txt",header = F)
+temp <- read.table("00_expression/01_raw_expression/GSM1112490_16cell_1-10_expression.txt",header = F)
 fpkm_matrix <- temp[,c(1,2)]
 
 for (i in file_list){
@@ -144,4 +146,71 @@ for (i in fpkm_m6A$track_id){
 }
 dev.off()
 ```
+
+```{r marker table}
+marker_group <- c("toti","pluri","TE","TSC","PrE_XEN","APA","APA_perturb")
+marker_all <- NULL
+for (i in marker_group){
+  assign(paste("marker",i,sep = "_"),
+         read.table(paste0("~/Data/01_TC1/00_gene_set/all_20230213_p0p10rp2/",i))$V1)
+  assign(paste("marker",i,sep = "_"),get(paste("marker",i,sep = "_"))[get(paste("marker",i,sep = "_")) %in% fpkm_matrix_mean$gene_name])
+  marker_all <- c(marker_all,get(paste("marker",i,sep = "_")))
+}
+
+fpkm_matrix_mean_rmdup <- fpkm_matrix_mean[!duplicated(fpkm_matrix_mean$gene_name),]
+
+rownames(fpkm_matrix_mean_rmdup) <- fpkm_matrix_mean_rmdup$gene_name
+
+fpkm_matrix_mean_rmdup <- fpkm_matrix_mean_rmdup[,3:12]
+
+```
+
+```{r marker barplot}
+dir.create("08_marker")
+
+tt_barplot <- function(gene_name){
+  temp <- data.frame(group=factor(colnames(fpkm_matrix_mean_rmdup),ordered = T,levels = colnames(fpkm_matrix_mean_rmdup)),
+                   tpm=as.vector(t(fpkm_matrix_mean_rmdup[gene_name,])))
+  p1 <- ggplot(temp, aes(x = group, y = tpm, fill=group)) +
+  geom_col(position="dodge",width =0.8,show.legend = F,size=2,fill="#DB5C25")+ #绘制柱状图
+  geom_point(show.legend = F,position = position_jitter(width = 0.1))+
+  labs(x=NULL,y=paste0(gene_name," tpm"))+#标题
+  theme_prism(palette = "floral",
+              base_fontface = "plain", # 字体样式，可选 bold, plain, italic
+              base_family = "sans", # 字体格式，可选 serif, sans, mono, Arial等
+              base_size = 16,  # 图形的字体大小
+              base_line_size = 0.8, # 坐标轴的粗细
+              axis_text_angle = 45)+ # 可选值有 0，45，90，270
+  theme(plot.title = element_text(size=16,hjust = -0.5))
+  #scale_color_manual(values = c("0h" = "#c6a46b", "4h" = "#a4a4ba", "12h" = "#92adc1"))
+  #scale_color_manual(values = c("0h" = "#ecc37f", "4h" = "#c5c5e0", "12h" = "#aecfe7"))
+  #scale_fill_prism(palette = "floral")#使用ggprism包修改颜色
+  print(p1)
+}
+for (i in marker_group){
+  pdf(paste("00_expression/08_marker/01",i,"barplot.pdf",sep = "_"),width = 3.5,height = 4)
+  for (j in get(paste0("marker_",i))){
+    tt_barplot(j)
+  }
+  dev.off()
+}
+```
+
+```{r marker heatmap}
+for (i in marker_group){
+  heatmap <- Heatmap(matrix = na.omit(t(scale(t(fpkm_matrix_mean_rmdup[rownames(fpkm_matrix_mean_rmdup) %in% get(paste0("marker_",i)),])))),name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("00_expression/08_marker/03_heatmap_",i,".pdf"))
+heatmap <- draw(heatmap)
+dev.off()
+
+}
+```
+
 

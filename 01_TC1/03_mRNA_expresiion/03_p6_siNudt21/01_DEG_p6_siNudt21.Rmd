@@ -39,6 +39,8 @@ library(enrichplot)
 library(patchwork)
 library(VennDiagram)
 
+
+
 # ~/Data/01_TC1/01_mRNA_expression/03_p6_siNudt21/03_p6_siNudt21.Rproj
 
 require("knitr")
@@ -453,149 +455,160 @@ heatmap <- draw(heatmap)
 dev.off()
 ```
 
-```{r gsea}
+```{r gsea ribo mito}
+# 创建文件夹
 dir.create("08_marker_gsea")
 
-## ribosome
-Ribosome_genes <- c("Gm2000","Rps18-ps6","Gm3550","Rps18-ps5","Rpl9-ps6","Rpl36a-ps1","Rps27rt","Rpl37","Rpl5","Oas1d","Gadd45gip1","Nsun3","Mrpl10","Mrpl41","Mrpl30","Rpl10","D1Pas1","Rpl31","Oas1c","Nr0b1","Apod","Rplp0","Mrps2","Mrps6","Canx","Ddx3x","Dhx9","Dmd","Eef2","Fau","Mrps33","Rack1","Elavl4","Jrk","Rpsa","Eif2d","Rps2","mt-Rnr1","mt-Rnr2","Mt3","Nck1","Mrpl40","Mrpl49","Npm1","Ppargc1a","Rpl10a","Rpl18","Rpl19","Rpl21","Rpl22","Mrpl23","Rpl26","Rpl27","Rpl28","Rpl29","Rpl30","Rpl32","Rpl32-ps","Rpl37a","Rpl36a","Rpl6","Rpl7","Rpl9","Rps12","Rps14","Rps15","Rps16","Rps17","Rps18","Rps19","Rps24","Rps29","Rps3a1","Rps4x","Rps5","Rps6","Rps7","Rps8","Snca","Larp4","Mtg1","Mrpl22","Larp4b","Btf3","Mrps27","Dhx29","Rpl13a","Uba52","Ubb","Abcf1","Rsl24d1","Eif2a","Oas1e","Mrps35","Mpv17l2","Rpl10l","Rps6kl1","Oas1g","Mrps12","Oas1f","Oas1h","Oas1a","Rpl27a","Rps15a","Rpl23a","Rpl12","Rpl8","Rpl13","Rps3","Eif2ak4","Rpl7a","Rps11","Rpl3","Rps26","Mrpl39","Mrpl15","Mrpl17","Mrpl2","Mrpl50","Rpl17","Fubp3","Mrpl21","Gm5244","Hspa14","Mrps7","Mrpl48","Mtg2","Rps28","Rpl36","Rplp1","Mrpl37","Mrpl12","Mrpl19","Rps27","Mrps31","Rpl35a","Repin1","Mrps30","Mrpl38","Zcchc17","Gm6133","Rpl32l","Gm6525","Rpl36-ps4","Mrps22","Mrps23","Mrps10","Mrps25","Mrps14","Mrps24","Rpl23","Dap3","Mrpl54","Aurkaip1","Chchd1","Mrpl4","Rps4l","Rpl3l","Mrpl35","Rpl7l1","Mrps28","Mrps16","Mrps17","Mrps21","Mrps15","Ndufa7","Mrpl11","Mrpl20","Rps23","Rpl15","Rps21","Rpl36al","Rpl35","Mrpl51","Mrpl33","Mrps18b","Rpl11","Mrpl45","Rps10","Rpl14","Rplp2","Mrpl55","Rpl39","Mrpl42","Rpl37","Mrpl46","Rps20","Rpl38","Mrpl18","Mrpl24","Mrpl57","Rpl4","Rps27l","Rpl41","Mrps11","Rpl22l1","Rps13","Eif3h","Rpl39l","Rpl24","Rpl34","Mrpl14","Mrpl53","Mrpl13","Nufip2","Mrps18a","Mrpl58","Mrpl28","Mrps18c","Mrpl52","Mcts1","Mrpl44","Mrps9","Mterf4","Ptcd3","Ndufab1","Pnpt1","Nsun4","Larp1","Mrpl47","Mrpl32","Malsu1","Rps25","Rpl18a","Rps9","Mrps5","Rps27a","Mrpl9","Mrps34","Mrpl1","Mrpl3","Mrpl16","Mrpl27","Mrpl34","Mrpl36","Mrpl43","Mrps26")
-
-tt_wt(Ribosome_genes,"../../00_gene_set/CC_Ribosome")
-
-msigdb <- data.frame(term=rep("Ribosome",length(Ribosome_genes)),
-                     gene=Ribosome_genes)
-
-pdf("08_marker_gsea/gsea_ribosome_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- res_siNC_siNudt21_1$log2FoldChange
-
-names(res_siNC_siNudt21_1_list) <- rownames(res_siNC_siNudt21_1)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## ribosome_biogenesis
+# 读取基因集
+Ribosome_genes <- read.table("../../00_gene_set/CC_Ribosome")$V1
 ribosome_biogenesis_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/ribosome_biogenesis")$V1
-
-msigdb <- data.frame(term=c(rep("ribosome_biogenesis",length(ribosome_biogenesis_genes))),
-                     gene=c(ribosome_biogenesis_genes))
-
-
-pdf("08_marker_gsea/gsea_ribosome_biogenesis_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- res_siNC_siNudt21_1$log2FoldChange
-
-names(res_siNC_siNudt21_1_list) <- rownames(res_siNC_siNudt21_1)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-venn.diagram(x=list(CC_ribosome=Ribosome_genes,BP_ribosome=ribosome_biogenesis_genes),filename = "08_marker_gsea/venn_CC_BP_ribosome.png",imagetype = "png")
-
-## mito
 mitochondrial_protein_containing_complex_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrial_protein_containing_complex")$V1
-
 mitochondrion_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrion_organization")$V1
-
-msigdb <- data.frame(term=c(rep("mitochondrial_protein_complex",length(mitochondrial_protein_containing_complex_genes)),
-                            rep("mitochondrion_organization",length(mitochondrion_organization_genes))),
-                     gene=c(mitochondrial_protein_containing_complex_genes,mitochondrion_organization_genes))
-
-
-pdf("08_marker_gsea/gsea_mitochondrion_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- res_siNC_siNudt21_1$log2FoldChange
-
-names(res_siNC_siNudt21_1_list) <- rownames(res_siNC_siNudt21_1)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
-dev.off()
-
-## extracellular 
 extracellular_matrix_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix_organization")$V1
-
 extracellular_matrix_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix")$V1
 
-msigdb <- data.frame(term=c(rep("extracellular_matrix_organization",length(extracellular_matrix_organization_genes)),
-                            rep("extracellular_matrix",length(extracellular_matrix_genes))),
-                     gene=c(extracellular_matrix_organization_genes,extracellular_matrix_genes))
+# 将基因集按照对应的GO term分类
+term_ <- c(rep("GO_ribosome_biogenesis",length(ribosome_biogenesis_genes)),
+                            rep("GO_Ribosome",length(Ribosome_genes)),
+                            rep("GO_mitochondrial_protein_complex",length(mitochondrial_protein_containing_complex_genes)),
+                            rep("GO_mitochondrion_organization",length(mitochondrion_organization_genes)),
+                            rep("GO_extracellular_matrix_organization",length(extracellular_matrix_organization_genes)),
+                            rep("GO_extracellular_matrix",length(extracellular_matrix_genes)))
+gene_ <- c(ribosome_biogenesis_genes,Ribosome_genes,
+                            mitochondrial_protein_containing_complex_genes,mitochondrion_organization_genes,
+                            extracellular_matrix_organization_genes,extracellular_matrix_genes)
+msigdb <- data.frame(term=term_,
+                     gene=gene_)
 
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_siNudt21.pdf",width = 5)
+# 获取差异基因列表
 res_siNC_siNudt21_1_list <- res_siNC_siNudt21_1$log2FoldChange
-
 names(res_siNC_siNudt21_1_list) <- rownames(res_siNC_siNudt21_1)
-
 res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
 
-
+# 进行GSEA分析
 gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
              pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
              eps=1e-100,
              nPermSimple = 10000)
 
-gseaplot2(gsea,geneSetID=1:2,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
+# 绘制GSEA图
+terms <- c("GO_ribosome_biogenesis",
+           "GO_Ribosome",
+           "GO_mitochondrial_protein_complex",
+           "GO_mitochondrion_organization",
+           "GO_extracellular_matrix_organization",
+           "GO_extracellular_matrix")
 
+# 绘制GSEA图并保存
+library(GseaVis)
+gseaList1 <- lapply(terms, function(x){
+  gseaNb(object = gsea,
+         geneSetID = x,
+         addPval = T,
+         subPlot = 2)
+})
 
+lapply(terms[c(1,3)], function(x){
+  gseaNb(object = gsea,
+         geneSetID = x,
+         addPval = T,
+         pvalX = 0.55,pvalY = 0.25,
+         subPlot = 2)
+}) -> gseaList2
+
+pdf("08_marker_gsea/gsea_siNudt21_1.pdf",width = 4,height = 4)
+print(gseaList1)
+print(gseaList2)
 dev.off()
 
-venn.diagram(x=list(extracellular_matrix=extracellular_matrix_genes,extracellular_matrix_organization=extracellular_matrix_organization_genes),filename = "08_marker_gsea/venn_extracellular_matrix_organization.png",imagetype = "png")
+gseaList <- list(gseaList1[[1]],gseaList2[[1]],gseaList2[[2]])
 
-extracellular_matrix_intersect_genes <- intersect(extracellular_matrix_genes,extracellular_matrix_organization_genes)
-
-msigdb <- data.frame(term=c(rep("extracellular_matrix_intersect",length(extracellular_matrix_intersect_genes))),
-                     gene=c(extracellular_matrix_intersect_genes))
-
-
-pdf("08_marker_gsea/gsea_extracellular_matrix_intersect_siNudt21.pdf",width = 5)
-res_siNC_siNudt21_1_list <- res_siNC_siNudt21_1$log2FoldChange
-
-names(res_siNC_siNudt21_1_list) <- rownames(res_siNC_siNudt21_1)
-
-res_siNC_siNudt21_1_list <- sort(res_siNC_siNudt21_1_list,decreasing = T)
-
-
-gsea <- GSEA(res_siNC_siNudt21_1_list,TERM2GENE = msigdb,
-             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
-             eps=1e-100,
-             nPermSimple = 10000)
-
-gseaplot2(gsea,geneSetID=1,
-          title="siNC_siNudt21_1",pvalue_table = T,base_size = 10)
-
-
+pdf("08_marker_gsea/gsea_siNudt21_1_combine.pdf",width = 12,height = 4.5)
+cowplot::plot_grid(plotlist = gseaList,ncol = 3,align = 'hv')
 dev.off()
 
+```
+
+```{r gsea gseGO}
+# 将res_siNC_siNudt21_1_list_转换为数据框
+res_siNC_siNudt21_1_list_ <- as.data.frame(res_siNC_siNudt21_1[,c(2,5)])
+# 添加SYMBOL列
+res_siNC_siNudt21_1_list_$SYMBOL <- rownames(res_siNC_siNudt21_1_list_)
+
+# 将SYMBOL转换为ENTREZID
+df <- bitr(rownames(res_siNC_siNudt21_1_list_),
+           fromType = "SYMBOL",
+           toType = "ENTREZID",
+           OrgDb = org.Mm.eg.db)
+
+# 将ENTREZID添加到res_siNC_siNudt21_1_list_中
+res_siNC_siNudt21_1_list_ <- merge(res_siNC_siNudt21_1_list_,df,by="SYMBOL")
+
+# 获取基因列表
+genelist <- res_siNC_siNudt21_1_list_$log2FoldChange
+names(genelist) <- res_siNC_siNudt21_1_list_$ENTREZID
+genelist <- sort(genelist,decreasing = T)
+
+# 进行GO分析
+GO_kk_entrez <- gseGO(geneList = genelist,
+                      ont = "All",
+                      OrgDb = org.Mm.eg.db,
+                      keyType = "ENTREZID",
+                      eps = 1e-100,
+                      pvalueCutoff = 0.1)
+
+# 保存结果
+save(GO_kk_entrez, file = "08_marker_gsea/GSEA_result_siNudt21_1.RData")
+
+# 将ENTREZID转换为可读性更好的形式
+GO_kk <- DOSE::setReadable(GO_kk_entrez,
+                           OrgDb = org.Mm.eg.db,
+                           keyType = "ENTREZID")
+
+# 选择p值小于0.01且NES绝对值大于1的结果
+GO_kk_cut <- GO_kk[GO_kk@result$p.adjust<0.01 & abs(GO_kk@result$NES)>1,]
+
+# 分别选择NES大于0和小于0的结果
+GO_kk_cut_up <- subset(GO_kk_cut,NES>0)
+GO_kk_cut_down <- subset(GO_kk_cut,NES<0)
+
+# 进行GSEA分析
+gseaNb(object = GO_kk_entrez,
+         geneSetID = "GO:0044391",
+         addPval = T,
+         subPlot = 2)
+
+# 生成GSEA GO富集分析结果的散点图
+# 绘制GO_kk_cut_down的散点图
+pdf("08_marker_gsea/gsea_GO_cut_down_q0.01.pdf",width = 6,height = 5)
+
+# 按照pvalue从大到小排序
+GO_kk_cut_down <- GO_kk_cut_down[order(GO_kk_cut_down$pvalue,decreasing = T),]
+# 将Description转换为factor类型，并按照原始顺序排序
+GO_kk_cut_down$Description <- factor(GO_kk_cut_down$Description, levels = GO_kk_cut_down$Description)
+# 绘制散点图
+ggplot(tail(GO_kk_cut_down,10), aes(x=-log10(pvalue), y=Description, size=abs(NES), color=abs(NES))) +
+  geom_point() +
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme_classic() +
+  labs(x="-log10(pValue)", y=NULL)+
+  theme(axis.text = element_text(size=10))
+dev.off()
+
+# 绘制GO_kk_cut_up的散点图
+pdf("08_marker_gsea/gsea_GO_cut_up_q0.01.pdf",width = 5,height = 6)
+# 按照pvalue从大到小排序
+GO_kk_cut_up <- GO_kk_cut_up[order(GO_kk_cut_up$pvalue,decreasing = T),]
+# 将Description转换为factor类型，并按照原始顺序排序
+GO_kk_cut_up$Description <- factor(GO_kk_cut_up$Description, levels = GO_kk_cut_up$Description)
+# 绘制散点图
+ggplot(tail(GO_kk_cut_up,10), aes(x=-log10(pvalue), y=Description, size=abs(NES), color=abs(NES))) +
+  geom_point() +
+  scale_color_gradient(low = "yellow", high = "red") +
+  theme_classic() +
+  labs(x="-log10_pValue", y=NULL)+
+  theme(axis.text = element_text(size=10))
+dev.off()
 ```
 
 ```{r log2FC_histgram}
@@ -668,36 +681,71 @@ dev.off()
 ```
 
 ```{r log2FC heatmap}
+
+# 将log2FoldChange转化为矩阵
 log2FC_siM3_1_siNudt21_matrix <- as.matrix(log2FC_siM3_1_siNudt21[,2:3])
-
+# 按照log2FoldChange排序
 log2FC_siM3_1_siNudt21_matrix <- log2FC_siM3_1_siNudt21_matrix[order(log2FC_siM3_1_siNudt21_matrix[,1]),]
-
-
+# 画热图
 Heatmap(log2FC_siM3_1_siNudt21_matrix,cluster_rows = F)
-
 
 
 ```
 
 ```{r DEG top500}
-dir.create("04_DEG_result/top500")
-res_siNC_siNudt21_1_ft <- subset(as.data.frame(res_siNC_siNudt21_1),padj < 0.05 )
-res_siNC_siNudt21_1_ft <- res_siNC_siNudt21_1_ft[order(res_siNC_siNudt21_1_ft$log2FoldChange,decreasing = T),]
 
+# 创建文件夹
+dir.create("04_DEG_result/top500")
+# 筛选差异表达基因
+res_siNC_siNudt21_1_ft <- subset(as.data.frame(res_siNC_siNudt21_1),padj < 0.05 )
+# 按照log2FoldChange排序
+res_siNC_siNudt21_1_ft <- res_siNC_siNudt21_1_ft[order(res_siNC_siNudt21_1_ft$log2FoldChange,decreasing = T),]
+# 取前500个和后500个
 res_siNC_siNudt21_1_ft_up500 <- head(res_siNC_siNudt21_1_ft,500)
 res_siNC_siNudt21_1_ft_down500 <- tail(res_siNC_siNudt21_1_ft,500)
-
+# 输出差异表达基因列表
 tt_wt(res_siNC_siNudt21_1_ft_up500,"04_DEG_result/top500/res_siNC_siNudt21_1_ft_up500.txt",row.names = T,col.names = T)
 tt_wt(res_siNC_siNudt21_1_ft_down500,"04_DEG_result/top500/res_siNC_siNudt21_1_ft_down500.txt",row.names = T,col.names = T)
-
+# 输出差异表达基因列表的基因名
 tt_wt(rownames(res_siNC_siNudt21_1_ft_up500),"04_DEG_result/top500/res_siNC_siNudt21_1_ft_up500_gene.txt")
 tt_wt(rownames(res_siNC_siNudt21_1_ft_down500),"04_DEG_result/top500/res_siNC_siNudt21_1_ft_down500_gene.txt")
-
+# GO富集分析
 tt_enrichGO(rownames(res_siNC_siNudt21_1_ft_up500),filedir = "04_DEG_result/top500",groupname = "res_siNC_siNudt21_1_ft_up500")
-
 tt_enrichGO(rownames(res_siNC_siNudt21_1_ft_down500),filedir = "04_DEG_result/top500",groupname = "res_siNC_siNudt21_1_ft_down500")
 
 
+```
+
+```{r tpm_heatmap APA_perturb Nudt21_LACE_target}
+APA_perturb_target <- read.table("../../26_LACE_seq_Nudt21/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/02_annotation/APA_perturb_target")$V1
+
+temp <- t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% APA_perturb_target,c(1,2,3:4)])))
+  temp <- na.omit(temp)
+  heatmap <- Heatmap(matrix = temp,name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("08_marker/09_heatmap_APA_perturb_target.pdf"))
+heatmap <- draw(heatmap)
+dev.off()
+
+temp <- t(scale(t(tpm_matrix[rownames(tpm_matrix) %in% APA_perturb_target,c(1,2,3:4)])))
+  temp <- na.omit(temp)
+  heatmap <- Heatmap(matrix = temp,name="z-score",
+                                show_column_names = TRUE,show_row_names=T,
+                                cluster_rows = TRUE,cluster_columns = F,
+                                width = unit(4,'inches'),
+                                col=circlize::colorRamp2(c(-1.18,0,1.18), 
+                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+
+
+pdf(paste0("08_marker/09_heatmap_APA_perturb_target.pdf"))
+heatmap <- draw(heatmap)
+dev.off()
 
 ```
 

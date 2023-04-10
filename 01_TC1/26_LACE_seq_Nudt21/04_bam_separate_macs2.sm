@@ -1,0 +1,58 @@
+SAMPLE=["P0","P9"]
+TREATMENT=["input","IP_1","IP_2","IP_3"]
+
+STRAND=["pos","neg"]
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_{strand}.bam.bai",sample=SAMPLE,treatment=TREATMENT,strand=STRAND),
+    "info/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/flagstat/flagstat_summary.txt"
+    
+rule bam_separate:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/01_bam_raw/{sample}_{treatment}.bam",
+    "04_hisat2_mapping/dedup_vs_vs/01_bam_raw/{sample}_{treatment}.bam.bai"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_pos.bam",
+    "04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_neg.bam"
+  threads: 8
+  shell:
+    """
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -b -F 16 {input[0]} 1> {output[0]}
+  	/disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -b -f 16 {input[0]} 1> {output[1]}
+  	"""
+    
+rule bam_separated_index:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_{strand}.bam"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_{strand}.bam.bai"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/bam_{strand}_index_{sample}_{treatment}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} > {log} 2>&1"
+
+rule bam_merge_flagstat:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_{strand}.bam"
+  output:
+    "info/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/flagstat/{sample}_{treatment}_{strand}.flagstat"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/{sample}_{treatment}_flagstat_{strand}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} > {output} 2>{log}"
+
+rule bam_flagstat_summary:
+  input:
+    expand("info/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/flagstat/{sample}_{treatment}_{strand}.flagstat",sample=SAMPLE,treatment=TREATMENT,strand=STRAND)
+  output:
+    "info/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/flagstat/flagstat_summary.txt"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/07_bam_separate/flagstat/summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'mapped' {input}   > {output}
+    """

@@ -1,0 +1,56 @@
+GROUP=["P0","P9"]
+
+SAMPLE=["input","IP_1","IP_2","IP_3"]
+
+METHOD=["raw","dedup"]
+THREADS = 25
+
+GTF="/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.pc.gtf"
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/plotProfile.png",method=METHOD)
+
+rule computeMatrix_distribution:
+  input:
+    bw=expand("04_hisat2_mapping/{method}_vs_vs/02_bam_raw_bw/{group}_{sample}.bw",method="{method}",group=GROUP,sample=SAMPLE)
+  output:
+    mat="04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/computeMatrix.mat.gz",
+    tab="04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/computeMatrix.tab",
+    bed="04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/computeMatrix.bed"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/computeMatrix.log"
+  params:
+    gtf=GTF,
+  threads: THREADS
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/computeMatrix scale-regions \
+      --regionsFileName {params.gtf} \
+      --scoreFileName {input.bw} \
+      --outFileName {output.mat} \
+      --outFileNameMatrix {output.tab} \
+      --outFileSortedRegions {output.bed} \
+      --regionBodyLength 6000 \
+      --beforeRegionStartLength 3000  \
+      --afterRegionStartLength 3000 \
+      --binSize 10 \
+      --skipZeros \
+      --numberOfProcessors {threads} \
+      --missingDataAsZero \
+       > {log} 2>&1"
+
+rule plotProfile:
+  input:
+    mat="04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/computeMatrix.mat.gz"
+  output:
+    png="04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/plotProfile.png"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/04_bam_raw_computeMatrix/plotProfile.log"
+  threads: 1
+  shell:
+    "/disk/user_09/anaconda3/envs/deeptools/bin/plotProfile \
+      --perGroup \
+      --matrixFile {input.mat} \
+      --outFileName {output.png} \
+       > {log} 2>&1"
+       

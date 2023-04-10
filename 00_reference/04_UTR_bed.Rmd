@@ -1,0 +1,84 @@
+---
+title: "04_UTR_bed"
+author: "Tang Li"
+date: '2023-04-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(GenomeInfoDb)
+library(rtracklayer)
+library(stringr)
+library(tidyverse)
+library(ttFunctions)
+
+require(knitr)
+opts_knit$set(root.dir = "~/reference/annotation/mm39/UTR")
+```
+
+```{r}
+
+# Import the gtf file for mm39 genome
+gtf_mm39 <- import("../raw/gencode.vM29.annotation.gtf")
+
+# Extract only the rows with type "gene" and convert to a data frame
+gtf_mm39_gene <- as_tibble(gtf_mm39[gtf_mm39$type=="gene",])
+
+# Keep only the necessary columns
+gtf_mm39_gene <- gtf_mm39_gene[,c(1:5,10:12)]
+# 
+# # Sort the data frame by gene_id and remove duplicates based on gene_name
+# gtf_mm39_gene <- gtf_mm39_gene[order(gtf_mm39_gene$gene_id),]
+# gtf_mm39_gene <- gtf_mm39_gene[!duplicated(gtf_mm39_gene$gene_name),]
+
+# Keep only the necessary columns and rearrange them
+gtf_mm39_gene_bed <- gtf_mm39_gene[,c(1,2,3,6,4,5)]
+
+# Write the final bed file
+tt_wt(gtf_mm39_gene_bed,"mm39_gene.bed") # Writing the bed file for mm39 genome
+```
+
+```{bash }
+# dir: ~/reference/annotation/mm39/UTR
+bedtools flank -l 0 -r 3000 -s -i mm39_gene_sort.bed -g ~/reference/genome/mm/GRCm39.genome.fa.fai | bedtools subtract -A -a mm39_gene_sort.bed -b - > mm39_gene_rmoverlap.bed
+```
+
+```{r }
+
+gtf_mm39_gene_rm_overlap <- read.table("mm39_gene_rmoverlap.bed")
+colnames(gtf_mm39_gene_rm_overlap) <- c("seqnames","start","end","gene_id","width","strand")
+gtf_mm39_gene_rm_overlap_ <- transform(gtf_mm39_gene_rm_overlap,
+                                      gene_type=gtf_mm39_gene$gene_type[match(gtf_mm39_gene_rm_overlap$gene_id,gtf_mm39_gene$gene_id)],
+                                      gene_name = gtf_mm39_gene$gene_name[match(gtf_mm39_gene_rm_overlap$gene_id,gtf_mm39_gene$gene_id)])
+
+
+gtf_mm39_gene_w1500_pc <- filter(gtf_mm39_gene_rm_overlap_,width>=1500,gene_type=="protein_coding")
+
+gtf_mm39_gene_w1500_pc <- gtf_mm39_gene_w1500_pc[order(gtf_mm39_gene_w1500_pc$gene_id),]
+
+gtf_mm39_gene_w1500_pc <- gtf_mm39_gene_w1500_pc[!duplicated(gtf_mm39_gene_w1500_pc$gene_name),]
+
+
+gtf_mm39_w1500_pc_GB <- data.frame(chr=gtf_mm39_gene_w1500_pc$seqnames,
+                           start=gtf_mm39_gene_w1500_pc$start+500,
+                           end=gtf_mm39_gene_w1500_pc$end-500,
+                           name=gtf_mm39_gene_w1500_pc$gene_name,
+                           score=".",
+                           strand=gtf_mm39_gene_w1500_pc$strand)
+
+gtf_mm39_w1500_pc_TTS <- data.frame(chr=gtf_mm39_gene_w1500_pc$seqnames,
+                           start=ifelse(gtf_mm39_gene_w1500_pc$strand=="+",gtf_mm39_gene_w1500_pc$end+500,gtf_mm39_gene_w1500_pc$start-2000),
+                           end=ifelse(gtf_mm39_gene_w1500_pc$strand=="+",gtf_mm39_gene_w1500_pc$end+2000,gtf_mm39_gene_w1500_pc$start-500),
+                           name=gtf_mm39_gene_w1500_pc$gene_name,
+                           score=".",
+                           strand=gtf_mm39_gene_w1500_pc$strand)
+
+tt_wt(gtf_mm39_w1500_pc_GB,"gtf_mm39_w1500_pc_GB.bed")
+tt_wt(gtf_mm39_w1500_pc_TTS,"gtf_mm39_w1500_pc_TTS.bed")
+
+tt_wt(gtf_mm39_w1500_pc_GB[,c(4,1,2,3,6)],"gtf_mm39_w1500_pc_GB.saf")
+tt_wt(gtf_mm39_w1500_pc_TTS[,c(4,1,2,3,6)],"gtf_mm39_w1500_pc_TTS.saf")
+
+```

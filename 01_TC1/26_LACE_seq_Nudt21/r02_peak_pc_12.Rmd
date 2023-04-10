@@ -1,0 +1,168 @@
+---
+title: "01_peak_qc"
+author: "Tang Li"
+date: '2023-03-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ChIPpeakAnno)
+library(GenomicFeatures)
+library(Vennerable)
+library(ttFunctions)
+
+
+require("knitr")
+opts_knit$set(root.dir = "~/Data/01_TC1/26_LACE_seq_Nudt21/03_hisat2_mapping/dedup_vs_vs/03_peak/01_IP_12/")
+```
+
+```{r peakAnno replication}
+
+common_peak_dir <- "/disk/user_09/Data/01_TC1/26_LACE_seq_Nudt21/03_hisat2_mapping/dedup_vs_vs/07_macs2_shift/"
+P0_bed1 <- file.path(common_peak_dir,"P0_IP_1_peak.bed")
+P0_bed2 <- file.path(common_peak_dir,"P0_IP_2_peak.bed")
+
+P9_bed1 <- file.path(common_peak_dir,"P9_IP_1_peak.bed")
+P9_bed2 <- file.path(common_peak_dir,"P9_IP_2_peak.bed")
+
+P0_1 <- ChIPpeakAnno::toGRanges(P0_bed1, format="BED", header=FALSE)
+P0_2 <- ChIPpeakAnno::toGRanges(P0_bed2, format="BED", header=FALSE)
+
+P9_1 <- ChIPpeakAnno::toGRanges(P9_bed1, format="BED", header=FALSE)
+P9_2 <- ChIPpeakAnno::toGRanges(P9_bed2, format="BED", header=FALSE)
+
+## must keep the class exactly same as gr1$score, i.e., numeric.
+P0_1$score <- as.numeric(P0_1$score) 
+P0_2$score <- as.numeric(P0_2$score) 
+P9_1$score <- as.numeric(P9_1$score) 
+P9_2$score <- as.numeric(P9_2$score) 
+
+ol_P0 <- findOverlapsOfPeaks(P0_1, P0_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_P0 <- addMetadata(ol_P0, colNames="score", FUN=base::mean) 
+ol_P0$peaklist[["P0_1///P0_2"]]
+
+ol_P9 <- findOverlapsOfPeaks(P9_1, P9_2)
+## add metadata (mean of score) to the overlapping peaks
+ol_P9 <- addMetadata(ol_P9, colNames="score", FUN=base::mean) 
+ol_P9$peaklist[["P9_1///P9_2"]]
+
+
+dir.create("01_replication")
+pdf("01_replication/01_peak_overlap.pdf")
+makeVennDiagram(ol_P0, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5,
+                margin=0.1) 
+
+makeVennDiagram(ol_P9, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2.5,
+                margin=0.1) 
+dev.off()
+```
+
+```{r peak overlap between group}
+P0 <- ol_P0$peaklist[["P0_1///P0_2"]]
+P9 <- ol_P9$peaklist[["P9_1///P9_2"]]
+
+P0_export <- as.data.frame(P0)
+write.table(P0_export[,c(1,2,3,6,7,5)],"01_replication/P0_common_peaks.bed",quote = FALSE,row.names = FALSE,col.names = FALSE,sep="\t")
+P9_export <- as.data.frame(P9)
+write.table(P9_export[,c(1,2,3,6,7,5)],"01_replication/P9_common_peaks.bed",quote = FALSE,row.names = FALSE,col.names = FALSE,sep="\t")
+
+ol <- findOverlapsOfPeaks(P0,P9)
+
+pdf("01_replication/02_peak_overlap_P0P9.pdf")
+makeVennDiagram(ol, fill=c("#b3dbdc", "#fbb2c9"), # circle fill color
+                col=c("#D55E00", "#0072B2"), #circle border color
+                cat.col=c("#D55E00", "#0072B2"),# label color, keep same as circle border color
+                cex=3,
+                cat.cex=2,
+                margin=0.1) 
+dev.off()
+
+ol$venn_cnt
+venn::venn(x=2,counts=ol$venn_cnt[,3])
+venn_data <- Vennerable::Venn(Weight = ol$venn_cnt[,3],SetNames=c("P0","P9"),numberOfSets = 2)
+
+pdf("01_replication/03_peak_overlap_P0P9.pdf")
+plot(venn_data, show = list(SetLabels = T,Faces = T, DarkMatter = F))
+dev.off()
+
+```
+
+```{r peak anno}
+
+txdb <- makeTxDbFromGFF('/disk/user_09/reference/annotation/mm39/raw/gencode.vM29.basic.annotation.gtf')
+annoData <- toGRanges(txdb, format='gene')
+annoData[1:2]
+
+overlaps_P0 <- ol$peaklist[["P0"]]
+overlaps_P9 <- ol$peaklist[["P9"]]
+overlaps <- ol$peaklist[["P0///P9"]]
+
+binOverFeature(overlaps, annotationData=annoData,
+               radius=5000, nbins=50, FUN=length, errFun=0,
+               xlab="distance from TSS (bp)", ylab="count",
+               main="Distribution of aggregated peak numbers around TSS(M3IN_12h)")
+
+## check the genomic element distribution of the duplicates
+## the genomic element distribution will indicates the 
+## the correlation between duplicates.
+dir.create("05_annotation")
+pdf("05_annotation/01_peak_ElementDistribution_basic.pdf")
+peaks_sep <- GRangesList(P0_1=P0_1,
+                        P0_2=P0_2,
+                        P9_1=P9_1,
+                        P9_2=P9_2)
+genomicElementDistribution(peaks_sep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+
+peaks_rep <- GRangesList(P0=P0,
+                         P9=P9)
+genomicElementDistribution(peaks_rep, 
+                           TxDb = txdb,
+                           promoterRegion=c(upstream=1000, downstream=100),
+                           geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+pdf("05_annotation/01_peak_ElementDistribution_circle_basic.pdf")
+out_P0 <- genomicElementDistribution(peaks_rep$P0, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+
+out_P9 <- genomicElementDistribution(peaks_rep$P9, 
+                                         TxDb = txdb,
+                                         promoterRegion=c(upstream=1000, downstream=100),
+                                         geneDownstream=c(upstream=0, downstream=4000))
+dev.off()
+
+## check the genomic element distribution for the overlaps
+## the genomic element distribution will indicates the 
+## the best methods for annotation.
+## The percentages in the legend show the percentage of peaks in 
+## each category.
+
+
+# out_M3IN_12h <- genomicElementDistribution(overlaps_M3IN_12h, 
+#                                          TxDb = txdb,
+#                                          promoterRegion=c(upstream=2000, downstream=500),
+#                                          geneDownstream=c(upstream=0, downstream=5000),
+#                                          promoterLevel=list(
+#                                            # from 5' -> 3', fixed precedence 3' -> 5'
+#                                            breaks = c(-2000, -1000, -500, 0, 500),
+#                                            labels = c("upstream 1-2Kb", "upstream 0.5-1Kb", 
+#                                                       "upstream <500b", "TSS - 500b"),
+#                                            colors = c("#FFE5CC", "#FFCA99", 
+#                                                       "#FFAD65", "#FF8E32")))
+```

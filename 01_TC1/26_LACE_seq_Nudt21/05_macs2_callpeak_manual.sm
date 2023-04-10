@@ -1,0 +1,57 @@
+SAMPLE=["P0","P9"]
+
+IP=["IP_1","IP_2","IP_3"]
+
+STRAND=["pos","neg"]
+
+rule all:
+  input:
+    expand("04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_peaks.bed",sample=SAMPLE,ip=IP),
+    expand("04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/03_bed_slop/slop30/{sample}_{ip}_peaks.bed",sample=SAMPLE,ip=IP)
+    
+rule bed_modify:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/{sample}_{ip}_neg_peaks.narrowPeak",
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/{sample}_{ip}_pos_peaks.narrowPeak"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_neg_peaks.narrowPeak",
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_pos_peaks.narrowPeak",
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_peaks.narrowPeak",
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_peaks.bed"
+  log:
+    "logs/04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}.log"
+  shell:
+    """
+    echo "primary peak number[neg]:" > {log} 2>&1
+    cat {input[0]} | wc -l >> {log} 2>&1
+    cat {input[0]} \
+    | awk '$1 ~ /^chr[0-9]*$/ || $1 ~ /^chr[X|Y]$/' | awk '$7>=1' \
+    | awk '$6="-"' | awk -v OFS="\t" '{{print $0}}' \
+    1> {output[0]} 2>> {log}
+    echo "modified peak number[neg]:" >> {log} 2>&1
+    cat {output[0]} | wc -l >> {log} 2>&1
+    
+    echo "primary peak number[pos]:" >> {log} 2>&1
+    cat {input[1]} | wc -l >> {log} 2>&1
+    cat {input[1]} \
+    | awk '$1 ~ /^chr[0-9]*$/ || $1 ~ /^chr[X|Y]$/' | awk '$7>=1' \
+    | awk '$6="+"' | awk -v OFS="\t" '{{print $0}}' \
+    1> {output[1]} 2>> {log}
+    echo "modified peak number[pos]:" >> {log} 2>&1
+    cat {output[1]} | wc -l >> {log} 2>&1
+    
+    cat {output[0]} {output[1]} \
+    | sort -k1,1 -k2,2n | awk -v OFS="\t" '{{print $0}}' 1> {output[2]}
+    cat {output[2]} | awk -v OFS="\t" '{{print $1,$2,$3,$4,$5,$6}}' > {output[3]}
+    cat {output[3]} | wc -l >> {log} 2>&1
+    """
+
+rule bed_slop:
+  input:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/02_bed_modify/{sample}_{ip}_peaks.bed"
+  output:
+    "04_hisat2_mapping/dedup_vs_vs/09_macs2_peak/04_macs2_manual/03_bed_slop/slop30/{sample}_{ip}_peaks.bed"
+  shell:
+    """
+    cat {input} | awk -v OFS="\t" '{{print $1,$2-30,$3+30,$4,$5,$6}}' 1> {output}
+    """

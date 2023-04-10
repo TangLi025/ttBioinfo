@@ -1,0 +1,78 @@
+SAMPLE=["P0_input","P0_IP_1","P0_IP_2","P0_IP_3","P9_input","P9_IP_1","P9_IP_2","P9_IP_3"]
+
+METHOD=["raw","dedup"]
+
+INDEX="/disk/user_09/reference/index/hisat2/mm39/mm39"
+
+MAPPING_THREADS = 10
+
+# 根据样本命名修改sample、rep等
+rule all:
+  input:
+    expand("04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam.bai",method=METHOD,sample=SAMPLE),
+    expand("info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/flagstat_summary.txt",method=METHOD)
+
+# 注意链特异性类型 
+# --rna-strandness RF （R2为forward，有义链）
+# 如果比对率不高，可以尝试 --very-sensitive
+rule hisat2_mapping_raw:
+  input:
+    "03_fastq_detRNA/{method}_vs/00_detRNA_fastq/{sample}.fq.gz"
+  output:
+    bam="04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam",
+    summary="info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.summary.txt",
+    R1="04_hisat2_mapping/{method}_vs_vs/00_unMap/{sample}.fq.gz"
+  params:
+    index=INDEX
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/hisat2 -x {params.index} \
+    --un-gz {output.R1} \
+    --very-sensitive \
+    --rna-strandness RF \
+    --summary-file {output.summary} \
+    -p {threads} -U {input[0]} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bam_index_raw:
+  input:
+    "04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam"
+  output:
+    "04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam.bai"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/01_bam_raw_index/{sample}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"
+    
+rule bam_flagstat_raw:
+  input:
+    "04_hisat2_mapping/{method}_vs_vs/01_bam_raw/{sample}.bam"
+  output:
+    "info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/{sample}.flagstat"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/{sample}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools flagstat -@ {threads} {input} 1> {output} 2> {log}"
+
+rule bam_flagstat_summary_raw:
+  input:
+    expand("info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/{sample}.flagstat",method="{method}",sample=SAMPLE)
+  output:
+    "info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/flagstat_summary_num.txt",
+    "info/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/flagstat_summary.txt"
+  log:
+    "logs/04_hisat2_mapping/{method}_vs_vs/01_bam_raw/flagstat/flagstat_summary.log"
+  threads: 2
+  shell:
+    """
+    grep 'properly' {input} | cut -d ":" -f 2 | cut -d "+" -f 1  > {output[0]}
+    grep 'properly' {input} > {output[1]}
+    """

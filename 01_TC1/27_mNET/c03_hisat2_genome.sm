@@ -1,0 +1,54 @@
+SAMPLE=["NET0_1","NET0_2","NET12_1","NET12_2","NETNC_1","NETNC_2","NETNU_1","NETNU_2","NETM3_1","NETM3_2","NETVI_1","NETVI_2"]
+
+READ=["1","2"]
+
+INDEX="/disk/user_09/reference/index/hisat2/mm39_ss_exon/mm39_ss_exon"
+
+MAPPING_THREADS = 15
+
+# 根据样本命名修改sample、rep等
+rule all:
+  input:
+    expand("03_hisat2_mapping/01_bam_raw/{sample}.bam.bai",sample=SAMPLE),
+
+
+# 注意链特异性类型 
+# --rna-strandness RF （R2为forward，有义链）
+# 如果比对率不高，可以尝试 --very-sensitive
+rule hisat2_mapping:
+  input:
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_1.derRNA.fq.gz",
+    "02_fastq_derRNA/00_derRNA_fastq/{sample}_2.derRNA.fq.gz"
+  output:
+    bam="03_hisat2_mapping/01_bam_raw/{sample}.bam",
+    summary="info/03_hisat2_mapping/01_bam_raw/{sample}.summary.txt",
+    R1="03_hisat2_mapping/00_unMap_2/{sample}_1.fq.gz",
+    R2="03_hisat2_mapping/00_unMap_2/{sample}_2.fq.gz"
+  params:
+    index=INDEX,
+    outname="03_hisat2_mapping/00_unMap_2/{sample}_%.fq.gz"
+  log:
+    "logs/03_hisat2_mapping/01_bam_raw/{sample}.log"
+  threads: MAPPING_THREADS
+  shell:
+    """
+    /disk/user_09/anaconda3/envs/LinLong/bin/hisat2 -x {params.index} \
+    --un-conc-gz {params.outname} \
+    --rna-strandness FR \
+    --summary-file {output.summary} \
+    -p {threads} -1 {input[0]} -2 {input[1]} \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools view -@ {threads} -bS \
+    | /disk/user_09/anaconda3/envs/LinLong/bin/samtools sort -@ {threads} -o {output.bam} \
+    1> {log} 2>&1
+    """
+
+rule bam_index:
+  input:
+    "03_hisat2_mapping/01_bam_raw/{sample}.bam"
+  output:
+    "03_hisat2_mapping/01_bam_raw/{sample}.bam.bai"
+  log:
+    "logs/03_hisat2_mapping/01_bam_raw_index/{sample}.log"
+  threads: 2
+  shell:
+    "/disk/user_09/anaconda3/envs/LinLong/bin/samtools index -@ {threads} {input} 1> {log} 2>&1"
