@@ -521,153 +521,77 @@ dev.off()
 
 ```
 
-```{r siNC cluster}
-dir.create("06_diff_siNC")
+```{r gsea mito ribo}
+# 创建文件夹
+dir.create("08_marker_gsea")
 
-diff_geneset_filter1 <- c(rownames(res_p10_p0_filter_1),
-                              rownames(res_p10_rp2_filter_1),
-                              rownames(res_p10_M3IN_filter_1),
-                              rownames(res_p10_siM3_filter_1),
-                              rownames(res_p10_siVirma_filter_1),
-                              rownames(res_p10_siNudt21_filter_1),
-                              rownames(res_p10_XEN_filter_1),
-                              rownames(res_p10_TSC_filter_1),
-                              rownames(res_p0_M3IN_filter_1),
-rownames(res_p0_siM3_filter_1),
-rownames(res_p0_siVirma_filter_1),
-rownames(res_p0_siNudt21_filter_1),
-rownames(res_p0_rp2_filter_1),
-rownames(res_p0_TSC_filter_1),
-rownames(res_p0_XEN_filter_1),
-rownames(res_XEN_M3IN_filter_1),
-rownames(res_XEN_siM3_filter_1),
-rownames(res_XEN_siVirma_filter_1),
-rownames(res_XEN_siNudt21_filter_1),
-rownames(res_XEN_rp2_filter_1),
-rownames(res_XEN_TSC_filter_1),
-rownames(res_TSC_M3IN_filter_1),
-rownames(res_TSC_siM3_filter_1),
-rownames(res_TSC_siVirma_filter_1),
-rownames(res_TSC_siNudt21_filter_1),
-rownames(res_TSC_rp2_filter_1),
-rownames(res_rp2_M3IN_filter_1),
-rownames(res_rp2_siM3_filter_1),
-rownames(res_rp2_siVirma_filter_1),
-rownames(res_rp2_siNudt21_filter_1),
-rownames(res_M3IN_siM3_filter_1),
-rownames(res_M3IN_siVirma_filter_1),
-rownames(res_M3IN_siNudt21_filter_1),
-rownames(res_siVirma_siM3_filter_1),
-rownames(res_siVirma_siNudt21_filter_1),
-rownames(res_siM3_siNudt21_filter_1))
+# 读取基因集
+Ribosome_genes <- read.table("../../00_gene_set/CC_Ribosome")$V1
+ribosome_biogenesis_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/ribosome_biogenesis")$V1
+mitochondrial_protein_containing_complex_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrial_protein_containing_complex")$V1
+mitochondrion_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/mitochondrion_organization")$V1
+extracellular_matrix_organization_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix_organization")$V1
+extracellular_matrix_genes <- read.table("~/Data/01_TC1/user_08_TC1/00_gene_set/extracellular_matrix")$V1
 
-diff_geneset_filter1 <- diff_geneset_filter1[!duplicated(diff_geneset_filter1)]
-tpm_diff_p10 <- tpm_matrix_mean[diff_geneset_p10_filter1,]
+# 将基因集按照对应的GO term分类
+term_ <- c(rep("GO_ribosome_biogenesis",length(ribosome_biogenesis_genes)),
+                            rep("GO_Ribosome",length(Ribosome_genes)),
+                            rep("GO_mitochondrial_protein_complex",length(mitochondrial_protein_containing_complex_genes)),
+                            rep("GO_mitochondrion_organization",length(mitochondrion_organization_genes)),
+                            rep("GO_extracellular_matrix_organization",length(extracellular_matrix_organization_genes)),
+                            rep("GO_extracellular_matrix",length(extracellular_matrix_genes)))
+gene_ <- c(ribosome_biogenesis_genes,Ribosome_genes,
+                            mitochondrial_protein_containing_complex_genes,mitochondrion_organization_genes,
+                            extracellular_matrix_organization_genes,extracellular_matrix_genes)
+msigdb <- data.frame(term=term_,
+                     gene=gene_)
 
-venn(list(rownames(tpm_diff_p10),
-          c(read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder1_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder2_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder3_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder4_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder5_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder6_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder7_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder8_genes.txt")$V1,
-            read.table("../05_DEG_Nudt21_new/05_diff_UT_M3IN/km_9/newOrder9_genes.txt")$V1)))
+# 获取差异基因列表
+res_siNC_siNudt21_list <- res_siNC_siNudt21$log2FoldChange
+names(res_siNC_siNudt21_list) <- rownames(res_siNC_siNudt21)
+res_siNC_siNudt21_list <- sort(res_siNC_siNudt21_list,decreasing = T)
 
+# 进行GSEA分析
+gsea <- GSEA(res_siNC_siNudt21_list,TERM2GENE = msigdb,
+             pvalueCutoff = 1,maxGSSize = 2000,minGSSize = 5,
+             eps=1e-100,
+             nPermSimple = 10000)
 
-set.seed(1000)
+# 绘制GSEA图
+terms <- c("GO_ribosome_biogenesis",
+           "GO_Ribosome",
+           "GO_mitochondrial_protein_complex",
+           "GO_mitochondrion_organization",
+           "GO_extracellular_matrix_organization",
+           "GO_extracellular_matrix")
 
-for (i in 1:20){
-  heatmap_diff <- Heatmap(matrix = t(scale(t(tpm_diff_p10))),name="z-score",
-                                show_column_names = TRUE,show_row_names=FALSE,
-                                cluster_rows = TRUE,cluster_columns = T,
-                                width = unit(4,'inches'),
-                        row_km = i,
-                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
+# 绘制GSEA图并保存
+library(GseaVis)
+gseaList1 <- lapply(terms, function(x){
+  gseaNb(object = gsea,
+         geneSetID = x,
+         addPval = T,
+         subPlot = 2)
+})
 
+lapply(terms[c(1,3)], function(x){
+  gseaNb(object = gsea,
+         geneSetID = x,
+         addPval = T,
+         pvalX = 0.55,pvalY = 0.25,
+         subPlot = 2)
+}) -> gseaList2
 
-pdf(paste0("06_diff_p10/heatmap_cluster_col_diff_km",i,".pdf"))
-heatmap_diff <- draw(heatmap_diff)
-dev.off()
-}
-
-
-########### row_km=10
-dir.create("06_diff_p10/km_10")
-
-
-heatmap_diff <- Heatmap(matrix = t(scale(t(tpm_diff_p10))),name="z-score",
-                                show_column_names = TRUE,show_row_names=FALSE,
-                                cluster_rows = TRUE,cluster_columns = T,
-                                width = unit(4,'inches'),
-                                row_km = 15,
-                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
-
-
-pdf(paste0("06_diff_p10/km_10/heatmap.pdf"))
-heatmap_diff <- draw(heatmap_diff)
+pdf("08_marker_gsea/gsea_siNudt21.pdf",width = 4,height = 4)
+print(gseaList1)
+print(gseaList2)
 dev.off()
 
+gseaList <- list(gseaList2[[1]],gseaList2[[2]],gseaList1[[6]])
 
-tpm_newOrder1 <- tpm_diff_mean[row_order(heatmap_diff)$`1`,]
-tpm_newOrder2 <- tpm_diff_mean[row_order(heatmap_diff)$`2`,]
-tpm_newOrder3 <- tpm_diff_mean[row_order(heatmap_diff)$`3`,]
-tpm_newOrder4 <- tpm_diff_mean[row_order(heatmap_diff)$`4`,]
-#tpm_newOrder5 <- tpm_diff_mean[row_order(heatmap_diff)$`5`,]
-#tpm_newOrder6 <- tpm_diff_mean[row_order(heatmap_diff)$`6`,]
-#tpm_newOrder7 <- tpm_diff_mean[row_order(heatmap_diff2)$`7`,]
-#tpm_newOrder8 <- tpm_diff_mean[row_order(heatmap_diff2)$`8`,]
-#tpm_newOrder9 <- tpm_diff_mean[row_order(heatmap_diff2)$`9`,]
-
-gene_anno <- HeatmapAnnotation(cluster = c(rep("2",dim(tpm_newOrder2)[1]),
-                                           rep("1",dim(tpm_newOrder1)[1]),
-                                           rep("4",dim(tpm_newOrder4)[1]),
-                                           rep("3",dim(tpm_newOrder3)[1])),which = 'row')
-colnames(tpm_IR_diff_mean)
-heatmap_IR_diff_order <- Heatmap(matrix = t(scale(t(tpm_IR_diff_mean[c(rownames(tpm_newOrder2),
-                                            rownames(tpm_newOrder1),
-                                            rownames(tpm_newOrder4),
-                                            rownames(tpm_newOrder3)),]))),
-        name="z-score",
-                                show_column_names = TRUE,show_row_names=FALSE,
-                                cluster_rows = F,cluster_columns = F,
-        left_annotation = gene_anno,
-                                width = unit(3,'inches'),
-                                col=circlize::colorRamp2(c(-1.5,0,1.5), 
-                                                         colorRampPalette(c("#4875aa", "white", "#d7604c"))(3)))
-
-
-pdf("06_diff_p10/km_4/heatmap_km4_order.pdf")
-heatmap_IR_diff_order <- draw(heatmap_IR_diff_order)
+pdf("08_marker_gsea/gsea_siNudt21_combine.pdf",width = 12,height = 4.5)
+cowplot::plot_grid(plotlist = gseaList,ncol = 3,align = 'hv')
 dev.off()
-
-
-write.table(tpm_newOrder1,"06_diff_p10/km_4/tpm_newOrder1.txt",quote = F)
-write.table(tpm_newOrder2,"06_diff_p10/km_4/tpm_newOrder2.txt",quote = F)
-write.table(tpm_newOrder3,"06_diff_p10/km_4/tpm_newOrder3.txt",quote = F)
-write.table(tpm_newOrder4,"06_diff_p10/km_4/tpm_newOrder4.txt",quote = F)
-
-write.table(rownames(tpm_newOrder1),"06_diff_p10/km_4/newOrder1_genes.txt",quote = F,row.names = F,col.names = F)
-write.table(rownames(tpm_newOrder2),"06_diff_p10/km_4/newOrder2_genes.txt",quote = F,row.names = F,col.names = F)
-write.table(rownames(tpm_newOrder3),"06_diff_p10/km_4/newOrder3_genes.txt",quote = F,row.names = F,col.names = F)
-write.table(rownames(tpm_newOrder4),"06_diff_p10/km_4/newOrder4_genes.txt",quote = F,row.names = F,col.names = F)
-
-
-
-dir.create("06_diff_p10/km_4/01_GO")
-keytypes(org.Mm.eg.db)
-
-
-for (i in 1:4){
-   assign(paste0("Go_",i),transGO(i,"06_diff_p10/km_4/01_GO/"))
-}
-
-for (i in 1:4){
-        assign(paste0("KEGG_",i),transKEGG(i))
-}
 
 ```
 

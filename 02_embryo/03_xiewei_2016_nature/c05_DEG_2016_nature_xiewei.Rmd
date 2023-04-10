@@ -40,8 +40,7 @@ library(biomaRt)
 library(enrichplot)
 library(patchwork)
 
-# ~/Data/01_TC1/01_mRNA_expression/15_p0p14_siNuM3Vi/
-work_dir <- "~/Data/01_TC1/01_mRNA_expression/15_p0p14_siNuM3Vi/"
+work_dir <- "~/Data/02_embryo/06_embryo_xiewei_2016_nature/04_DEG/"
 require("knitr")
 opts_knit$set(root.dir = file.path(work_dir))
 
@@ -49,7 +48,7 @@ opts_knit$set(root.dir = file.path(work_dir))
 
 ```{r 设置工作路径}
 #设置工作路径
-dir='/disk/user_09/Data/01_TC1/28_RNAseq_p0p10_p11siM3siNusiVr/03_hisat2_mapping/03_bam_merge/'
+dir='/disk/user_09/Data/02_embryo/06_embryo_xiewei_2016_nature/03_hisat2_mapping/03_bam_merge/'
 
 sample_name <- paste(rep(c("p0","p14","siNC","siMettl3","siNudt21","siVirma"),each=2),
                      rep(c(1,2),times=6),

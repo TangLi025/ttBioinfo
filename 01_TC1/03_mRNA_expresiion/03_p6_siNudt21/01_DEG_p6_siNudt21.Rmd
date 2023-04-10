@@ -353,6 +353,7 @@ for (i in sn[1]){
 
 ```
 
+## marker 
 ```{r marker barplot}
 
 tt_barplot <- function(gene_name){
@@ -455,6 +456,7 @@ heatmap <- draw(heatmap)
 dev.off()
 ```
 
+## gsea
 ```{r gsea ribo mito}
 # 创建文件夹
 dir.create("08_marker_gsea")
@@ -611,6 +613,7 @@ ggplot(tail(GO_kk_cut_up,10), aes(x=-log10(pvalue), y=Description, size=abs(NES)
 dev.off()
 ```
 
+## 与p0p10进行比较
 ```{r log2FC_histgram}
 hist(res_siNC_siNudt21_1$log2FoldChange,breaks = 100)
 
